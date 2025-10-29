@@ -1,0 +1,265 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="NoStick.GrubConfigWindow"
+        Title="GRUB2 Boot Manager Configuration"
+        Width="700" Height="600"
+        CanResize="false"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource SystemChromeLowColor}">
+    
+    <Grid RowDefinitions="Auto,*,Auto" Margin="20">
+        
+        <!-- HEADER -->
+        <Border Grid.Row="0" 
+                Background="{DynamicResource SystemAccentColor}"
+                CornerRadius="10"
+                Padding="16,12"
+                Margin="0,0,0,20">
+            <StackPanel Spacing="4">
+                <TextBlock Text="⚙️ GRUB2 Boot Manager Setup"
+                          FontSize="18"
+                          FontWeight="Bold"
+                          Foreground="White"/>
+                <TextBlock Text="Configure GRUB2 as your system bootloader"
+                          FontSize="12"
+                          Foreground="White"
+                          Opacity="0.9"/>
+            </StackPanel>
+        </Border>
+        
+        <!-- MAIN CONTENT -->
+        <ScrollViewer Grid.Row="1" Margin="0,0,0,20">
+            <StackPanel Spacing="16">
+                
+                <!-- CURRENT BOOTLOADER STATUS -->
+                <Border Background="{DynamicResource SystemChromeMediumLowColor}"
+                       BorderBrush="{DynamicResource SystemBaseMediumColor}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="📊 Current System"
+                                  FontSize="14"
+                                  FontWeight="SemiBold"/>
+                        
+                        <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto">
+                            <TextBlock Grid.Row="0" Grid.Column="0" 
+                                      Text="Operating System:"
+                                      FontSize="12"
+                                      Margin="0,0,0,8"
+                                      Foreground="{DynamicResource SystemBaseMediumColor}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" 
+                                      Name="OSText"
+                                      Text="Detecting..."
+                                      FontSize="12"
+                                      Margin="0,0,0,8"
+                                      FontWeight="SemiBold"/>
+                            
+                            <TextBlock Grid.Row="1" Grid.Column="0" 
+                                      Text="Current Bootloader:"
+                                      FontSize="12"
+                                      Margin="0,0,0,8"
+                                      Foreground="{DynamicResource SystemBaseMediumColor}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" 
+                                      Name="BootloaderText"
+                                      Text="Detecting..."
+                                      FontSize="12"
+                                      Margin="0,0,0,8"
+                                      FontWeight="SemiBold"/>
+                            
+                            <TextBlock Grid.Row="2" Grid.Column="0" 
+                                      Text="GRUB2 Status:"
+                                      FontSize="12"
+                                      Foreground="{DynamicResource SystemBaseMediumColor}"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" 
+                                      Name="GrubStatusText"
+                                      Text="Checking..."
+                                      FontSize="12"
+                                      FontWeight="SemiBold"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+                
+                <!-- WINDOWS WARNING -->
+                <Border Name="WindowsWarningPanel"
+                       Background="#FEF3C7"
+                       BorderBrush="#F59E0B"
+                       BorderThickness="2"
+                       CornerRadius="8"
+                       Padding="16"
+                       IsVisible="False">
+                    <StackPanel Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="⚠️" FontSize="20" VerticalAlignment="Top"/>
+                            <TextBlock Text="Windows Boot Manager Detected"
+                                      FontSize="14"
+                                      FontWeight="Bold"
+                                      Foreground="#92400E"/>
+                        </StackPanel>
+                        <TextBlock TextWrapping="Wrap" 
+                                  FontSize="12"
+                                  Foreground="#78350F">
+                            <Run Text="Installing GRUB2 will replace the Windows Boot Manager as your primary bootloader."/>
+                            <LineBreak/>
+                            <LineBreak/>
+                            <Run Text="Don't worry:"/>
+                            <Run Text="Windows will still be available in the GRUB2 boot menu and will work normally." FontWeight="SemiBold"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+                
+                <!-- GRUB2 CONFIGURATION -->
+                <Border Background="{DynamicResource SystemChromeMediumLowColor}"
+                       BorderBrush="{DynamicResource SystemBaseMediumColor}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="16">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="🔧 Boot Menu Settings"
+                                  FontSize="14"
+                                  FontWeight="SemiBold"/>
+                        
+                        <!-- Timeout -->
+                        <Grid ColumnDefinitions="160,*,60">
+                            <TextBlock Grid.Column="0"
+                                      Text="Menu Timeout:"
+                                      FontSize="12"
+                                      VerticalAlignment="Center"/>
+                            <Slider Grid.Column="1"
+                                   Name="TimeoutSlider"
+                                   Minimum="0"
+                                   Maximum="30"
+                                   Value="5"
+                                   TickFrequency="5"
+                                   IsSnapToTickEnabled="True"
+                                   VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2"
+                                      Name="TimeoutText"
+                                      Text="5s"
+                                      FontSize="12"
+                                      FontWeight="SemiBold"
+                                      VerticalAlignment="Center"
+                                      HorizontalAlignment="Center"/>
+                        </Grid>
+                        
+                        <!-- Default Entry -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Default Boot Entry:"
+                                      FontSize="12"/>
+                            <ComboBox Name="DefaultEntryComboBox"
+                                     SelectedIndex="0"
+                                     Padding="10,8"
+                                     FontSize="12">
+                                <ComboBoxItem Content="First ISO in list"/>
+                                <ComboBoxItem Content="Last booted OS"/>
+                                <ComboBoxItem Content="Windows (if available)"/>
+                                <ComboBoxItem Content="Linux (if available)"/>
+                            </ComboBox>
+                        </StackPanel>
+                        
+                        <!-- Advanced Options -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Options:"
+                                      FontSize="12"/>
+                            <CheckBox Name="ChkQuietBoot"
+                                     Content="Quiet boot (hide GRUB details)"
+                                     IsChecked="True"
+                                     FontSize="12"/>
+                            <CheckBox Name="ChkRememberLast"
+                                     Content="Remember last selection"
+                                     IsChecked="True"
+                                     FontSize="12"/>
+                            <CheckBox Name="ChkShowWindows"
+                                     Content="Show Windows in boot menu"
+                                     IsChecked="True"
+                                     FontSize="12"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                
+                <!-- INSTALLATION TARGET -->
+                <Border Background="{DynamicResource SystemChromeMediumLowColor}"
+                       BorderBrush="{DynamicResource SystemBaseMediumColor}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="💾 Installation Target"
+                                  FontSize="14"
+                                  FontWeight="SemiBold"/>
+                        
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Install GRUB2 to:"
+                                      FontSize="12"/>
+                            <ComboBox Name="InstallTargetComboBox"
+                                     SelectedIndex="0"
+                                     Padding="10,8"
+                                     FontSize="12">
+                                <ComboBoxItem Content="Auto-detect primary disk (Recommended)"/>
+                            </ComboBox>
+                        </StackPanel>
+                        
+                        <TextBlock Name="TargetDiskInfo"
+                                  Text="Target: /dev/sda (240 GB)"
+                                  FontSize="11"
+                                  Foreground="{DynamicResource SystemBaseMediumColor}"
+                                  Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Border>
+                
+                <!-- PREVIEW -->
+                <Border Background="{DynamicResource SystemChromeMediumColor}"
+                       BorderBrush="{DynamicResource SystemBaseMediumColor}"
+                       BorderThickness="1"
+                       CornerRadius="8"
+                       Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="📋 What will be created:"
+                                  FontSize="12"
+                                  FontWeight="SemiBold"/>
+                        <TextBlock Name="PreviewText"
+                                  FontFamily="Consolas,Courier New,monospace"
+                                  FontSize="11"
+                                  TextWrapping="Wrap"
+                                  Foreground="{DynamicResource SystemBaseMediumColor}"
+                                  Text="• GRUB2 bootloader installed to MBR/ESP&#x0a;• Boot menu with 5 second timeout&#x0a;• Windows boot entry (chainloader)&#x0a;• no-stick ISO entries&#x0a;• Configuration saved to /boot/grub/custom.cfg"/>
+                    </StackPanel>
+                </Border>
+                
+            </StackPanel>
+        </ScrollViewer>
+        
+        <!-- FOOTER BUTTONS -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto,Auto">
+            <TextBlock Grid.Column="0"
+                      Name="StatusLabel"
+                      Text="Ready to configure"
+                      FontSize="11"
+                      VerticalAlignment="Center"
+                      Foreground="{DynamicResource SystemBaseMediumColor}"/>
+            
+            <Button Grid.Column="1"
+                   Name="BtnTestConfig"
+                   Content="🧪 Test Config"
+                   Padding="16,10"
+                   FontSize="12"
+                   ToolTip.Tip="Verify GRUB2 configuration without installing"/>
+            
+            <Button Grid.Column="2"
+                   Name="BtnInstallGrub"
+                   Content="✅ Install GRUB2"
+                   Padding="16,10"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Background="{DynamicResource SystemAccentColor}"
+                   Foreground="White"/>
+            
+            <Button Grid.Column="3"
+                   Name="BtnCancel"
+                   Content="Cancel"
+                   Padding="16,10"
+                   FontSize="12"/>
+        </Grid>
+        
+    </Grid>
+</Window>
