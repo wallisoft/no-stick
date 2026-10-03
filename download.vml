@@ -159,6 +159,15 @@ LUA
 Interpreter=lua
 <<LUA
 if not SELECTED then return end
--- step 3b will stream the download into the library with a progress bar (RunProcess + curl)
-Vml("SetStatusText", "Download " .. SELECTED.name .. ": coming next")
+if not SELECTED.url or not SELECTED.url:match("%.iso$") then
+    -- catalogue entry points at a download PAGE, not a direct .iso (Fedora, Bazzite, etc.)
+    Vml("InfoDialog", SELECTED.name .. " is downloaded from its own site:\n\n" .. (SELECTED.url or "") ..
+        "\n\nSave the .iso, then use 'Add an ISO I have'.", SELECTED.name)
+    return
+end
+-- a direct .iso link: hand it back to the main window to fetch with progress
+local file = SELECTED.url:match("([^/]+)$")
+Vml("SetSetting", "nostick_dl_url", SELECTED.url)
+Vml("SetSetting", "nostick_dl_name", file)
+Vml("CloseSelf")
 LUA
