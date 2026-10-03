@@ -1,0 +1,399 @@
+# No-Stick: a bare-metal VirtualBox. Manage a library of ISOs and VHDs, and boot any of them
+# directly, with none of the virtualisation overhead. (Step 2: the read-only library view.)
+
+@Window NoStick
+Title=No-Stick
+Width=820
+Height=560
+FormMinWidth=640
+FormMinHeight=420
+OnOpened=Load
+
+@DockPanel Root
+Parent=NoStick
+
+@Border Header
+Parent=Root
+DockPanel.Dock=Top
+Height=58
+Background=#1E3A8A
+Padding=18,0
+
+@TextBlock Title
+Parent=Header
+Text=No-Stick
+FontSize=22
+FontWeight=Bold
+Foreground=White
+VerticalAlignment=Center
+
+@Border StatusBar
+Parent=Root
+DockPanel.Dock=Bottom
+Height=26
+Background=#F3F4F6
+BorderBrush=#E5E7EB
+BorderThickness=0,1,0,0
+Padding=12,0
+
+@TextBlock status
+Parent=StatusBar
+Text=Loading...
+Foreground=#4B5563
+FontSize=11
+VerticalAlignment=Center
+
+@Border JobBar
+Parent=Root
+DockPanel.Dock=Bottom
+Height=150
+Background=#0F172A
+IsVisible=false
+Padding=12,8
+
+@StackPanel JobCol
+Parent=JobBar
+Spacing=4
+
+@StackPanel JobHead
+Parent=JobCol
+Orientation=Horizontal
+Spacing=8
+
+@TextBlock jobTitle
+Parent=JobHead
+Text=Working...
+Foreground=White
+FontWeight=Bold
+VerticalAlignment=Center
+
+@Button btnJobCancel
+Parent=JobHead
+Content=Cancel
+Padding=10,2
+OnClick=JobCancel
+
+@ListBox joblog
+Parent=JobCol
+Height=110
+Background=#0F172A
+Foreground=#86EFAC
+FontFamily=monospace
+
+@Border Sidebar
+Parent=Root
+DockPanel.Dock=Right
+Width=180
+Background=#F9FAFB
+BorderBrush=#E5E7EB
+BorderThickness=1,0,0,0
+
+@StackPanel Buttons
+Parent=Sidebar
+Margin=14
+Spacing=7
+
+@TextBlock LibManageLabel
+Parent=Buttons
+Text=LIBRARY
+FontSize=10
+FontWeight=Bold
+Foreground=#2563EB
+
+@Button btnDownload
+Parent=Buttons
+Content=Download a distro...
+Background=#2563EB
+Foreground=White
+Padding=10,7
+OnClick=Download
+
+@Button btnAddIso
+Parent=Buttons
+Content=Add an ISO I have...
+Padding=10,7
+OnClick=AddIso
+
+@Button btnNewVhd
+Parent=Buttons
+Content=New empty VHD...
+Padding=10,7
+OnClick=NewVhd
+
+@TextBlock DoLabel
+Parent=Buttons
+Text=WITH THE SELECTED ISO
+FontSize=10
+FontWeight=Bold
+Foreground=#2563EB
+Margin=0,10,0,0
+
+@Button btnTryLive
+Parent=Buttons
+Content=Try it live
+Padding=10,7
+OnClick=TryLive
+
+@Button btnInstallVhd
+Parent=Buttons
+Content=Install to a VHD...
+Padding=10,7
+OnClick=InstallVhd
+
+@Button btnInstallPart
+Parent=Buttons
+Content=Install to a partition...
+Padding=10,7
+OnClick=InstallPartition
+
+@TextBlock VhdLabel
+Parent=Buttons
+Text=WITH THE SELECTED VHD
+FontSize=10
+FontWeight=Bold
+Foreground=#2563EB
+Margin=0,10,0,0
+
+@Button btnBootNow
+Parent=Buttons
+Content=Boot now
+Padding=10,7
+OnClick=BootNow
+
+@Button btnBootRestart
+Parent=Buttons
+Content=Boot at restart
+Padding=10,7
+OnClick=BootRestart
+
+@Button btnDelete
+Parent=Buttons
+Content=Delete...
+Padding=10,7
+OnClick=DeleteItem
+
+@StackPanel Main
+Parent=Root
+Margin=16
+Spacing=4
+
+@TextBlock LibLabel
+Parent=Main
+Text=Your library
+FontSize=13
+FontWeight=Bold
+Foreground=#111827
+
+@ListBox library
+Parent=Main
+Height=380
+FontFamily=monospace
+SelectionChanged=Selected
+
+@Script Load
+Interpreter=lua
+<<LUA
+-- read the No-Stick library on this machine and list it. Reads only; changes nothing.
+LIBRARY = {}
+
+local function run(cmd)
+    return (Vml("Shell", cmd):gsub("%s+$", ""))        -- trim trailing whitespace/newlines
+end
+
+local function human(path)                             -- real disk usage, e.g. "3.1G" (empty if missing)
+    return run("du -h '" .. path .. "' 2>/dev/null | head -1 | cut -f1"):gsub("[^%w%.]", "")
+end
+
+-- VHDs, from the config the old No-Stick already keeps
+local json = require("dkjson")
+local raw = run("cat /opt/no-stick/vhds/vhd_config.json 2>/dev/null")
+if raw ~= "" then
+    local cfg = json.decode(raw)
+    if cfg and cfg.vhds then
+        local names = {}
+        for name in pairs(cfg.vhds) do names[#names + 1] = name end
+        table.sort(names)
+        for _, name in ipairs(names) do
+            local v = cfg.vhds[name]
+            local used = human(v.file or "")
+            LIBRARY[#LIBRARY + 1] = {kind = "VHD", name = name, file = v.file,
+                detail = (v.size_gb or "?") .. "GB disk" .. (used ~= "" and ("  -  " .. used .. " used") or "") ..
+                         (v.bootable and "  -  bootable" or ""), bootable = v.bootable}
+        end
+    end
+end
+
+-- ISOs in the library folder
+local isos = run("ls -1 ~/.config/no-stick/isos/*.iso /opt/no-stick/isos/*.iso 2>/dev/null")
+for path in (isos .. "\n"):gmatch("([^\n]+)") do
+    if path ~= "" then
+        local base = path:match("([^/]+)$")
+        LIBRARY[#LIBRARY + 1] = {kind = "ISO", name = base, file = path, detail = human(path)}
+    end
+end
+
+local lines = {}
+for i, item in ipairs(LIBRARY) do
+    lines[i] = string.format("[%s]  %-28s  %s", item.kind, item.name, (item.detail:gsub(",", ";")))
+end
+if #lines == 0 then
+    lines = {"(nothing yet - add an ISO or create a VHD to begin)"}
+end
+Vml("SetProperty", "library", "Items", table.concat(lines, ","))
+Vml("SetStatusText", #LIBRARY .. " item(s) in your library")
+Vml("RunScript", "Selected")
+LUA
+
+@Script Selected
+Interpreter=lua
+<<LUA
+local i = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
+local item = LIBRARY and LIBRARY[i + 1]
+local isVhd = item and item.kind == "VHD"
+local isIso = item and item.kind == "ISO"
+for _, b in ipairs({"btnTryLive", "btnInstallVhd", "btnInstallPart"}) do
+    Vml("SetProperty", b, "IsEnabled", isIso and "true" or "false")
+end
+for _, b in ipairs({"btnBootNow", "btnBootRestart"}) do
+    Vml("SetProperty", b, "IsEnabled", isVhd and "true" or "false")
+end
+Vml("SetProperty", "btnDelete", "IsEnabled", item and "true" or "false")
+if item then Vml("SetStatusText", item.kind .. ":  " .. item.file) end
+LUA
+
+@Script Download
+Interpreter=lua
+<<LUA
+-- the pretty front door: browse the community distro catalogue and download one
+Vml("SetSetting", "nostick_action", "download")
+Vml("FormOpenModal", "download.vml")
+Vml("RunScript", "Load")
+LUA
+
+@Script AddIso
+Interpreter=lua
+<<LUA
+local path = Vml("FileOpenDialog", "Choose an ISO you've already downloaded", "iso")
+if path == "" then return end
+Vml("SetStatusText", "Add ISO: coming next (" .. path .. ")")
+LUA
+
+@Script NewVhd
+Interpreter=lua
+<<LUA
+local name = Vml("PromptDialog", "New VHD", "Name for the virtual disk (letters, numbers, dashes):", "")
+name = name:gsub("%s+", ""):gsub("[^%w%-_]", "")
+if name == "" then return end
+if Vml("Shell", "test -f /opt/no-stick/vhds/" .. name .. ".img && echo yes") ~= "" then
+    return Vml("ErrorDialog", "A VHD called '" .. name .. "' already exists.", "New VHD")
+end
+local size = Vml("PromptDialog", "New VHD", "Size in GB (the file only uses what's written):", "20")
+size = tonumber(size)
+if not size or size < 1 then return end
+NEW_VHD_NAME = name
+NEW_VHD_SIZE = size
+Vml("SetProperty", "JobBar", "IsVisible", "true")
+Vml("SetProperty", "jobTitle", "Text", "Creating VHD: " .. name .. " (" .. size .. "GB)")
+Vml("SetProperty", "joblog", "Items", "")
+-- sparse file: instant, uses no space until written (same method as the proven No-Stick)
+local cmd = "set -e\n" ..
+    "sudo mkdir -p /opt/no-stick/vhds\n" ..
+    "echo 'Allocating " .. size .. "GB sparse disk...'\n" ..
+    "sudo truncate -s " .. size .. "G /opt/no-stick/vhds/" .. name .. ".img\n" ..
+    "echo 'Partitioning (EFI + root)...'\n" ..
+    "sudo parted -s /opt/no-stick/vhds/" .. name .. ".img mklabel gpt\n" ..
+    "sudo parted -s /opt/no-stick/vhds/" .. name .. ".img mkpart ESP fat32 1MiB 513MiB\n" ..
+    "sudo parted -s /opt/no-stick/vhds/" .. name .. ".img set 1 boot on\n" ..
+    "sudo parted -s /opt/no-stick/vhds/" .. name .. ".img mkpart root ext4 513MiB 100%\n" ..
+    "echo 'Done.'\n"
+CURRENT_JOB = Vml("RunProcess", cmd, "joblog", "NewVhdDone", "bash")
+Vml("SetProperty", "btnJobCancel", "IsEnabled", "true")
+LUA
+
+@Script NewVhdDone
+Interpreter=lua
+<<LUA
+local code = Vml("GetSetting", "exit_code")
+if code == "0" then
+    -- record it in the config the library reads
+    local json = require("dkjson")
+    local raw = Vml("Shell", "cat /opt/no-stick/vhds/vhd_config.json 2>/dev/null")
+    local cfg = (raw ~= "" and json.decode(raw)) or {vhds = {}, attachments = {}}
+    cfg.vhds = cfg.vhds or {}
+    cfg.vhds[NEW_VHD_NAME] = {file = "/opt/no-stick/vhds/" .. NEW_VHD_NAME .. ".img",
+        size_gb = NEW_VHD_SIZE, type = "empty", bootable = false, created = os.date("!%Y-%m-%dT%H:%M:%S")}
+    local out = json.encode(cfg, {indent = true})
+    Vml("Shell", "cat > /tmp/nostick-cfg.json << 'ENDCFG'\n" .. out .. "\nENDCFG\nsudo cp /tmp/nostick-cfg.json /opt/no-stick/vhds/vhd_config.json")
+    Vml("SetStatusText", "Created VHD: " .. NEW_VHD_NAME)
+else
+    Vml("ErrorDialog", "VHD creation failed (exit " .. code .. "). See the log.", "New VHD")
+end
+Vml("SetProperty", "JobBar", "IsVisible", "false")
+Vml("RunScript", "Load")
+LUA
+
+@Script JobCancel
+Interpreter=lua
+<<LUA
+if CURRENT_JOB then Vml("CancelProcess", CURRENT_JOB) end
+Vml("SetProperty", "JobBar", "IsVisible", "false")
+Vml("SetStatusText", "Cancelled")
+LUA
+
+@Script TryLive
+Interpreter=lua
+<<LUA
+-- boot the selected ISO live, nothing installed (kexec or next-restart)
+Vml("SetStatusText", "Try it live: coming next")
+LUA
+
+@Script InstallVhd
+Interpreter=lua
+<<LUA
+-- create a VHD and run the ISO's own installer against it (the real app)
+Vml("SetStatusText", "Install to a VHD: coming next")
+LUA
+
+@Script InstallPartition
+Interpreter=lua
+<<LUA
+-- advanced: make room (reuse swap, or shrink a partition) and install to a new partition
+Vml("ConfirmDialog", "Installing to a partition changes your real disk and can leave your PC unbootable if interrupted.\n\nHave a recovery USB ready before you do this.\n\n(Coming soon - not yet enabled.)", "Advanced: install to a partition")
+Vml("SetStatusText", "Install to a partition: coming later (advanced)")
+LUA
+
+@Script BootNow
+Interpreter=lua
+<<LUA
+Vml("SetStatusText", "Boot now (kexec): coming next")
+LUA
+
+@Script BootRestart
+Interpreter=lua
+<<LUA
+Vml("SetStatusText", "Boot at restart: coming next")
+LUA
+
+@Script DeleteItem
+Interpreter=lua
+<<LUA
+local i = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
+local item = LIBRARY and LIBRARY[i + 1]
+if not item then return end
+if Vml("ConfirmDialog", "Delete " .. item.kind .. " '" .. item.name .. "'?\n\n" .. item.file ..
+       "\n\nThis removes the file permanently.", "Delete") ~= "true" then return end
+if item.kind == "VHD" then
+    local json = require("dkjson")
+    local raw = Vml("Shell", "cat /opt/no-stick/vhds/vhd_config.json 2>/dev/null")
+    local cfg = (raw ~= "" and json.decode(raw)) or {vhds = {}}
+    if cfg.vhds then cfg.vhds[item.name] = nil end
+    local out = json.encode(cfg, {indent = true})
+    Vml("Shell", "cat > /tmp/nostick-cfg.json << 'ENDCFG'\n" .. out .. "\nENDCFG\n" ..
+        "sudo cp /tmp/nostick-cfg.json /opt/no-stick/vhds/vhd_config.json\n" ..
+        "sudo rm -f '" .. item.file .. "'")
+else
+    Vml("Shell", "rm -f '" .. item.file .. "'")
+end
+Vml("SetStatusText", "Deleted " .. item.name)
+Vml("RunScript", "Load")
+LUA

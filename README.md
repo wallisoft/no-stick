@@ -1,129 +1,67 @@
-# 🚀 no-stick - Bootable ISO Manager
+# No-Stick
 
-**Turn any swap partition or dedicated filesystem into a bootable ISO library with GRUB2 integration**
+**Boot and install Linux from your hard drive. No USB stick required.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platform: Linux](https://img.shields.io/badge/Platform-Linux-blue.svg)](https://www.linux.org/)
-[![Framework: .NET 8](https://img.shields.io/badge/.NET-8.0-purple.svg)](https://dotnet.microsoft.com/)
+No-Stick is a bare-metal boot manager: keep a library of ISOs and virtual disks (VHDs) on your
+machine, and boot or install any of them directly through GRUB2, with none of the overhead of
+virtualisation. Think of it as VirtualBox's convenience, but running on the real hardware.
 
-## What is no-stick?
+Built with [Visualised](https://visualised.io) — the whole app is two small `.vml` files you can read.
 
-no-stick eliminates the need for USB sticks to boot Linux distributions. Store multiple bootable ISOs on your hard drive's swap partition or a dedicated filesystem, and boot them directly via GRUB2.
+## What it does
 
-**Perfect for:**
-- 🔧 System administrators who need multiple rescue/installer ISOs
-- 💻 Linux enthusiasts testing different distributions
-- 🎓 Anyone tired of maintaining a collection of USB sticks
-- 🌍 Users who want a portable multi-boot solution on their laptop
+- **Try a distro live** — boot an ISO without installing anything.
+- **Install to a VHD** — a full, real install inside a disk-image file, booted directly by GRUB. Make
+  as many as you like; each is just a file.
+- **Install to a partition** *(advanced)* — including repurposing an existing Linux swap partition, or
+  shrinking a partition to make room, so you can even replace your main OS without a stick.
+- **Download a distro** — pick from a community-maintained catalogue; the ISO comes from the distro's
+  own official site.
+- **Boot now** (via kexec, no reboot) or **at next restart**.
 
-## Features
+## Dual-licensed
 
-### ✅ Implemented
-- **GRUB2 Installation** - Automatically install/configure GRUB2 as system bootloader
-- **Windows Detection** - Safely preserves Windows Boot Manager via chainloader
-- **UEFI & BIOS Support** - Works with both modern UEFI and legacy BIOS systems
-- **Dual Mode Operation**
-  - Desktop mode: Full management UI
-  - Boot mode: Minimal UI for boot-time selection
+No-Stick is free and open source for individuals and community use. A commercial licence is available
+for organisations that want support or different terms — see [LICENSE](LICENSE). Wallisoft's intent is
+that No-Stick stays free for people, always.
 
-### 🚧 In Development
-- **Copy to Swap** - Copy ISOs to swap partition with progress tracking
-- **Safe Boot** - One-time boot via grub-reboot (no permanent config changes)
-- **ISO Download** - Download popular distributions directly from the app
-- **Distro Database** - Curated list of Linux distributions with metadata
+## Install
 
-## Architecture
+**Linux (Ubuntu 22.04+ and similar):**
 
-```
-no-stick/
-├── Program.cs              # Mode selector (--bootmgr flag)
-├── Models/
-│   ├── ISOEntry.cs        # ISO metadata
-│   └── DistroEntry.cs     # Distribution database entry
-├── Managers/
-│   ├── GrubManager.cs     # GRUB2 operations (8.6KB)
-│   ├── ISOStorageManager.cs  # ISO persistence (6.3KB)
-│   ├── PartitionManager.cs   # Partition detection
-│   └── DistroManager.cs      # Distro database
-└── UI/
-    ├── DesktopMode/
-    │   ├── MainWindow.axaml[.cs]        # Main management UI
-    │   └── GrubConfigWindow.axaml[.cs]  # GRUB configuration
-    └── BootMode/
-        └── BootManagerWindow.axaml[.cs] # Boot-time selector
-```
+~~~
+curl -fsSL https://github.com/wallisoft/no-stick/releases/latest/download/install.sh | bash
+~~~
 
-## How It Works
+This installs No-Stick and the Visualised runtime it needs. Run it from your app menu, or `no-stick`
+from a terminal.
 
-1. **Install GRUB2** - no-stick installs GRUB2 as your bootloader (if not already installed)
-2. **Copy ISOs** - Store bootable ISOs on your swap partition or dedicated filesystem
-3. **Generate Boot Entries** - Automatically creates GRUB menu entries for each ISO
-4. **Boot Directly** - Select ISOs from GRUB menu at boot time
+## Build / run from source
 
-## Installation
+No-Stick is a Visualised app. With Visualised installed (`vml` on your PATH):
 
-### Prerequisites
-- Linux system (tested on Ubuntu/Debian-based distributions)
-- .NET 8.0 SDK/Runtime
-- Root/sudo access (for GRUB installation)
-
-### Build from Source
-```bash
+~~~
 git clone https://github.com/wallisoft/no-stick.git
 cd no-stick
-dotnet build
-dotnet run
-```
+vml no-stick.vml
+~~~
 
-### Usage
-```bash
-# Desktop mode (full UI)
-./no-stick
+## The distro catalogue
 
-# Boot manager mode (minimal UI)
-./no-stick --bootmgr
-```
+The "Download a distro" list is maintained in the open at
+[wallisoft/nostick-distros](https://github.com/wallisoft/nostick-distros). Pull requests to add or
+update distributions are welcome — No-Stick reads it live, so additions appear without a new release.
 
-## Technology Stack
+## Safety
 
-- **Framework**: .NET 8.0
-- **UI**: Avalonia 11.x (cross-platform XAML)
-- **Platform**: Linux (with potential macOS/BSD support)
-- **Bootloader**: GRUB2
-
-## Roadmap
-
-- [ ] Complete ISO copying functionality
-- [ ] Implement safe boot (grub-reboot)
-- [ ] Add ISO download feature
-- [ ] Create distro database with popular ISOs
-- [ ] Package as .deb/.rpm
-- [ ] Add automated testing
-- [ ] Multi-language support
-- [ ] macOS/BSD support (if feasible)
-
-## Contributing
-
-Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## License
-
-Dual-licensed under MIT License - see [LICENSE](LICENSE) file for details.
+No-Stick can change your bootloader and, in advanced mode, your partitions. Those actions carry clear
+warnings and ask before doing anything irreversible. **Always have recovery media and a backup before
+changing partitions on your main disk.**
 
 ## Credits
 
-**Created by:**
-- Steve "recursion hurts my head" Wallis - [wallisoft@gmail.com](mailto:wallisoft@gmail.com)
-- Claude "set: paste" (Anthropic)
+Created through AI–human collaboration:
+- Steve "recursion hurts my head" Wallis — vision, architecture, implementation
+- Claude "set: paste" (Anthropic) — development assistance
 
-**Project Homepage:** https://no-stick.uk
-
-## Support
-
-- 📧 Email: wallisoft@gmail.com
-- 🌐 Website: https://no-stick.uk
-- 🐛 Issues: https://github.com/wallisoft/no-stick/issues
-
----
-
-**Warning:** Modifying bootloaders can render your system unbootable if done incorrectly. Always ensure you have backups and recovery media before using no-stick.
+**Homepage:** https://no-stick.uk

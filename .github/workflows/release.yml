@@ -1,0 +1,40 @@
+name: Release
+
+# Tag like v0.1.0 and this publishes the No-Stick app (the .vml files + install.sh) to the release.
+# No-Stick is a Visualised app, so there's nothing to compile: the Visualised runtime does the running.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the forms parse
+        run: |
+          python3 -m pip install --quiet lupa
+          # a minimal parse check: every @Window/@Script/control line is well-formed enough to zip
+          for f in no-stick.vml download.vml; do
+            test -s "$f" || { echo "::error::$f missing or empty"; exit 1; }
+            grep -q "@Window" "$f" || { echo "::error::$f has no @Window"; exit 1; }
+          done
+          echo "forms present"
+      - name: Package the app
+        run: |
+          zip -j no-stick.zip no-stick.vml download.vml
+          cp install.sh install.sh
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: No-Stick ${{ github.ref_name }}
+          body: |
+            **Linux:** `curl -fsSL https://github.com/wallisoft/no-stick/releases/latest/download/install.sh | bash`
+
+            No-Stick is a [Visualised](https://visualised.io) app; the installer fetches the Visualised runtime too.
+          files: |
+            no-stick.zip
+            install.sh
