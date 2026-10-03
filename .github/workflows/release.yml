@@ -27,7 +27,6 @@ jobs:
       - name: Package the app
         run: |
           zip -j no-stick.zip no-stick.vml download.vml
-          cp install.sh install.sh
       - uses: softprops/action-gh-release@v2
         with:
           name: No-Stick ${{ github.ref_name }}
