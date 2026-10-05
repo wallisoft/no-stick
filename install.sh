@@ -8,6 +8,24 @@
 
 set -euo pipefail
 
+# True if the installed Visualised runtime reports version 0.17 or newer. It is asked directly: a tiny form
+# writes the runtime's own version to a file. A runtime too old to know its version writes nothing.
+runtime_new_enough() {
+    local bin="$1" d v
+    d="$(mktemp -d)"
+    printf '%s\n' '@Window Probe' 'Title=probe' 'Width=200' 'Height=100' 'OnOpened=Report' '' \
+        '@Script Report' 'Interpreter=lua' '<<LUA' \
+        'local f = io.open(os.getenv("NS_PROBE"), "w")' 'f:write(tostring(Vml("VmlVersion")))' 'f:close()' 'LUA' > "$d/probe.vml"
+    NS_PROBE="$d/ver" QT_QPA_PLATFORM=offscreen timeout 30 "$bin" "$d/probe.vml" --shot "$d/probe.png" >/dev/null 2>&1 || true
+    v="$(cat "$d/ver" 2>/dev/null || true)"
+    rm -rf "$d"
+    case "$v" in
+        ""|0.[0-9]|0.[0-9].*|0.1[0-6]|0.1[0-6].*) return 1 ;;      # nothing reported, or 0.0 - 0.16
+        [0-9]*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 main() {
     local REL="https://github.com/wallisoft/no-stick/releases/latest/download"
     local URL="${NOSTICK_URL:-$REL/no-stick.tar.gz}"
@@ -22,6 +40,9 @@ main() {
 
     if [ ! -x "$VML_BIN" ]; then
         echo "==> No-Stick runs on Visualised: installing that first"
+        curl -fsSL "$VML_INSTALLER" | bash
+    elif ! runtime_new_enough "$VML_BIN"; then
+        echo "==> Your Visualised is older than No-Stick needs: updating it"
         curl -fsSL "$VML_INSTALLER" | bash
     fi
     if [ ! -x "$VML_BIN" ]; then

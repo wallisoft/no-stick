@@ -7,6 +7,7 @@
 #   ~/.no-stick/vhds/NAME.grub     that disk's boot-menu entry; present = in the menu (.grub.off = prepared, hidden)
 #   ~/.no-stick/isos/NAME.iso.grub a live-boot entry for that ISO, same idea
 #   ~/.no-stick/menu.conf          default=<entry id> and timeout=<seconds> for the No-Stick menu
+#   ~/.no-stick/backups/NAME--DATE.img   a backup of a virtual disk (a sparse copy)
 #   /boot/no-stick/grub.cfg        the No-Stick menu, generated from the .grub files
 # The main GRUB menu only ever holds ONE "No-Stick" entry that opens /boot/no-stick/grub.cfg.
 
@@ -14,7 +15,7 @@
 # content before showing it, so Height below is only a floor). The info bar and the Delete button are both docked to
 # the bottom with the same height and bottom margin, which is what keeps them level on any font.
 @Window NoStick
-Title=No-Stick 0.5.3
+Title=No-Stick 0.6.0
 Width=860
 Height=560
 Resizable=false
@@ -26,14 +27,14 @@ Parent=NoStick
 @Border Header
 Parent=Root
 DockPanel.Dock=Top
-Height=58
+Height=42
 Background=#1E3A8A
 Padding=18,0
 
 @TextBlock Title
 Parent=Header
 Text=No-Stick
-FontSize=22
+FontSize=18
 FontWeight=Bold
 Foreground=White
 VerticalAlignment=Center
@@ -48,19 +49,19 @@ BorderThickness=1,0,0,0
 
 @DockPanel SideDock
 Parent=Sidebar
-Margin=14,14,14,16
+Margin=14,10,14,12
 
 @Button btnDelete
 Parent=SideDock
 DockPanel.Dock=Bottom
 Content=Delete...
-Height=32
-Margin=0,14,0,0
+Height=30
+Margin=0,10,0,0
 OnClick=DeleteItem
 
 @StackPanel Buttons
 Parent=SideDock
-Spacing=7
+Spacing=5
 
 @TextBlock LibManageLabel
 Parent=Buttons
@@ -74,19 +75,19 @@ Parent=Buttons
 Content=Download a distro...
 Background=#2563EB
 Foreground=White
-Padding=10,7
+Padding=10,5
 OnClick=Download
 
 @Button btnAddIso
 Parent=Buttons
 Content=Add an ISO I have...
-Padding=10,7
+Padding=10,5
 OnClick=AddIso
 
 @Button btnNewVhd
 Parent=Buttons
 Content=New empty VHD...
-Padding=10,7
+Padding=10,5
 OnClick=NewVhd
 
 @TextBlock DoLabel
@@ -95,24 +96,24 @@ Text=WITH THE SELECTED ISO
 FontSize=10
 FontWeight=Bold
 Foreground=#2563EB
-Margin=0,10,0,0
+Margin=0,6,0,0
 
 @Button btnTryLive
 Parent=Buttons
 Content=Try it live
-Padding=10,7
+Padding=10,5
 OnClick=TryLive
 
 @Button btnInstallVhd
 Parent=Buttons
 Content=Install to a VHD...
-Padding=10,7
+Padding=10,5
 OnClick=InstallVhd
 
 @Button btnInstallPart
 Parent=Buttons
 Content=Install to a partition...
-Padding=10,7
+Padding=10,5
 OnClick=InstallPartition
 
 @TextBlock VhdLabel
@@ -121,65 +122,55 @@ Text=WITH THE SELECTED VHD
 FontSize=10
 FontWeight=Bold
 Foreground=#2563EB
-Margin=0,10,0,0
+Margin=0,6,0,0
 
 @Button btnBootNow
 Parent=Buttons
 Content=Boot now
-Padding=10,7
+Padding=10,5
 OnClick=BootNow
 
 @Button btnBootRestart
 Parent=Buttons
 Content=Boot at restart
-Padding=10,7
+Padding=10,5
 OnClick=BootRestart
 
 @Button btnBackup
 Parent=Buttons
 Content=Back up...
-Padding=10,7
+Padding=10,5
 OnClick=BackupVhd
 
 @Button btnRestore
 Parent=Buttons
 Content=Restore...
-Padding=10,7
+Padding=10,5
 OnClick=RestoreVhd
 
 @TextBlock MenuLabel
 Parent=Buttons
-Text=BOOT MENU (SELECTED ITEM)
+Text=BOOT MENU
 FontSize=10
 FontWeight=Bold
 Foreground=#2563EB
-Margin=0,10,0,0
-
-@CheckBox chkInMenu
-Parent=Buttons
-Content=Show in boot menu
-OnClick=ToggleMenu
-
-@CheckBox chkDefault
-Parent=Buttons
-Content=Boot this by default
-OnClick=ToggleDefault
+Margin=0,6,0,0
 
 @Button btnTimeout
 Parent=Buttons
 Content=Auto-boot: off
-Padding=10,7
+Padding=10,5
 OnClick=SetTimeout
 
 @Button btnRepair
 Parent=Buttons
 Content=Repair boot
-Padding=10,7
+Padding=10,5
 OnClick=RepairBoot
 
 @DockPanel Main
 Parent=Root
-Margin=16,16,16,16
+Margin=14,10,14,12
 
 @TextBlock LibLabel
 Parent=Main
@@ -193,7 +184,7 @@ Margin=0,0,0,4
 @Border StatusWrap
 Parent=Main
 DockPanel.Dock=Bottom
-Height=32
+Height=30
 Background=#F3F4F6
 BorderBrush=#E5E7EB
 BorderThickness=1,1,1,1
@@ -245,10 +236,58 @@ Background=#0F172A
 Foreground=#86EFAC
 FontFamily=monospace
 
-@ListBox library
+@ScrollViewer libScroll
 Parent=Main
-FontFamily=monospace
-SelectionChanged=Selected
+Background=White
+BorderBrush=#9CA3AF
+BorderThickness=1
+HorizontalScrollBarVisibility=Disabled
+
+@StackPanel libRows
+Parent=libScroll
+Background=White
+Spacing=0
+
+# right-click menu for a library row (opened from RowPressed)
+@ContextMenu libMenu
+
+@MenuItem miShow
+Parent=libMenu
+Text=Show in boot menu
+OnClick=ToggleMenu
+
+@MenuItem miDefault
+Parent=libMenu
+Text=Boot this by default
+OnClick=ToggleDefault
+
+@MenuItem miSep1
+Parent=libMenu
+IsSeparator=true
+
+@MenuItem miRename
+Parent=libMenu
+Text=Rename...
+OnClick=RenameItem
+
+@MenuItem miBackup
+Parent=libMenu
+Text=Back up
+OnClick=BackupVhd
+
+@MenuItem miRestore
+Parent=libMenu
+Text=Restore as a new disk...
+OnClick=RestoreVhd
+
+@MenuItem miSep2
+Parent=libMenu
+IsSeparator=true
+
+@MenuItem miDelete
+Parent=libMenu
+Text=Delete...
+OnClick=DeleteItem
 
 @Script Load
 Interpreter=lua
@@ -301,20 +340,25 @@ local function too_old(v)
     return maj == 0 and min < 17
 end
 if ver == "" or too_old(ver) then
-    Vml("ErrorDialog", "No-Stick needs Visualised 0.17 or newer (this is " ..
-        (ver == "" and "older" or ver) .. ").\n\nPlease update Visualised, then reopen No-Stick.\n\nhttps://visualised.io", "Update needed")
     Vml("SetStatusText", "Needs Visualised 0.17+ - please update")
-    Vml("SetProperty", "library", "Items", "(this Visualised runtime is too old - please update)")
     for _, b in ipairs({"btnDownload", "btnAddIso", "btnNewVhd", "btnTryLive", "btnInstallVhd",
-                        "btnInstallPart", "btnBootNow", "btnBootRestart", "btnDelete",
-                        "chkInMenu", "chkDefault", "btnTimeout"}) do
+                        "btnInstallPart", "btnBootNow", "btnBootRestart", "btnDelete", "btnTimeout"}) do
         Vml("SetProperty", b, "IsEnabled", "false")
+    end
+    -- offer to do the update, rather than just saying one is needed
+    if Vml("ConfirmDialog", "No-Stick needs Visualised 0.17 or newer (this is " .. (ver == "" and "older" or ver) .. ").\n\n" ..
+           "Update Visualised now? It downloads the latest version into your home folder and takes about a minute.",
+           "Update needed") == "true" then
+        -- runs detached, so it carries on after this window closes (the update replaces the program we are running)
+        Vml("Shell", [[nohup setsid bash -c "curl -fsSL https://github.com/wallisoft/vml-releases/releases/latest/download/install.sh | bash; command -v notify-send >/dev/null && notify-send \"Visualised is up to date\" \"You can open No-Stick again now.\"" > /tmp/visualised-update.log 2>&1 < /dev/null &]])
+        Vml("InfoDialog", "Visualised is updating in the background.\n\nNo-Stick will close now. Give it a minute, then open No-Stick again.", "Updating")
+        Vml("AppExit")
     end
     return
 end
 
 -- read the No-Stick library on this machine and list it. Reads only; changes nothing.
-local keep = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
+NS_BAKS = NS_DIR .. "/backups"
 LIBRARY = {}
 
 local function human(path)                             -- real disk usage, e.g. "3.1G" (empty if missing)
@@ -355,45 +399,88 @@ for path in (isos .. "\n"):gmatch("([^\n]+)") do
     end
 end
 
-local lines = {}
+-- backups of virtual disks: NAME--YYYYMMDD-HHMM.img
+local baks = run("ls -1 '" .. NS_BAKS .. "'/*.img 2>/dev/null")
+for path in (baks .. "\n"):gmatch("([^\n]+)") do
+    local base = path:match("([^/]+)%.img$")
+    if base then
+        LIBRARY[#LIBRARY + 1] = {kind = "BAK", name = base, file = path, side = path .. ".none", id = "",
+            inmenu = false, prepared = false, detail = human(path) .. "  backup of " .. (base:match("^(.-)%-%-") or base)}
+    end
+end
+
+-- one row per item: [marker] KIND name detail. The marker is a button: empty = not in the boot menu,
+-- orange = in the boot menu, green = in the boot menu and the default.
+Vml("ClearChildren", "libRows")
 for i, item in ipairs(LIBRARY) do
-    local mark = "[ ]"
-    if item.inmenu then mark = (item.id == NS_DEFAULT) and "[D]" or "[x]" end
-    lines[i] = string.format("%s %s  %-28s  %s", mark, item.kind, item.name, (item.detail:gsub(",", ";")))
+    local n = i - 1
+    local row, line, st, tx = "row" .. n, "line" .. n, "st" .. n, "tx" .. n
+    Vml("CreateControl", "Border", row, "libRows")
+    Vml("SetProperty", row, "Padding", "8,3,8,3")
+    Vml("SetEvent", row, "OnPointerPressed", "RowPressed")
+    -- (a DockPanel, not a horizontal StackPanel: a StackPanel's direction is fixed when it is created,
+    --  and CreateControl makes it before any property can be set)
+    Vml("CreateControl", "DockPanel", line, row)
+    Vml("CreateControl", "Button", st, line)
+    Vml("SetProperty", st, "DockPanel.Dock", "Left")
+    Vml("SetProperty", st, "Width", "16")
+    Vml("SetProperty", st, "Height", "16")
+    Vml("SetProperty", st, "VerticalAlignment", "Center")
+    if item.kind == "BAK" then
+        Vml("SetProperty", st, "Background", "#E5E7EB")
+        Vml("SetProperty", st, "IsEnabled", "false")
+    else
+        local isdef = item.inmenu and item.id == NS_DEFAULT
+        if item.inmenu then
+            Vml("SetProperty", st, "Background", isdef and "#16A34A" or "#F59E0B")
+        else
+            -- empty: an outline only. (The engine drops a button's border once it has a background colour,
+            -- so the hollow look comes from setting a border and no background.)
+            Vml("SetProperty", st, "CornerRadius", "5")
+            Vml("SetProperty", st, "BorderThickness", "2")
+            Vml("SetProperty", st, "BorderBrush", "#9CA3AF")
+        end
+        Vml("SetProperty", st, "ToolTip", isdef and "In the boot menu, and the default. Click to remove it from the menu."
+            or (item.inmenu and "In the boot menu. Click to remove it." or "Not in the boot menu. Click to add it."))
+        Vml("SetEvent", st, "OnClick", "StatusClick")
+    end
+    Vml("CreateControl", "TextBlock", tx, line)
+    Vml("SetProperty", tx, "FontFamily", "monospace")
+    Vml("SetProperty", tx, "VerticalAlignment", "Center")
+    Vml("SetProperty", tx, "Margin", "10,0,0,0")
+    Vml("SetProperty", tx, "Text", string.format("%-4s %-36s %s", item.kind, item.name, item.detail))
 end
-if #lines == 0 then
-    lines = {"(nothing yet - add an ISO or create a VHD to begin)"}
+if #LIBRARY == 0 then
+    Vml("CreateControl", "TextBlock", "tx0", "libRows")
+    Vml("SetProperty", "tx0", "Margin", "10,8,10,8")
+    Vml("SetProperty", "tx0", "Foreground", "#6B7280")
+    Vml("SetProperty", "tx0", "Text", "Nothing yet - download a distro or add an ISO to begin.")
 end
-Vml("SetProperty", "library", "Items", table.concat(lines, ","))
-Vml("SetStatusText", #LIBRARY .. " item(s)    [x] in the boot menu    [D] the default")
-if keep >= 0 and keep < #LIBRARY then
-    Vml("SetProperty", "library", "SelectedIndex", tostring(keep))   -- re-select what was selected
-end
+if not NS_SEL or NS_SEL >= #LIBRARY then NS_SEL = -1 end
+Vml("SetStatusText", #LIBRARY .. " item(s)     orange = in the boot menu     green = the default     right-click a row for more")
 Vml("RunScript", "Selected")
 LUA
 
 @Script Selected
 Interpreter=lua
 <<LUA
-local i = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
-local item = LIBRARY and LIBRARY[i + 1]
+-- paint the selection and enable what applies to it. NS_SEL is the selected row (0-based), or -1.
+local item = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
+for i = 1, #(LIBRARY or {}) do
+    Vml("SetProperty", "row" .. (i - 1), "Background", (i - 1 == NS_SEL) and "#DBEAFE" or "#FFFFFF")
+end
 local isVhd = item and item.kind == "VHD"
 local isIso = item and item.kind == "ISO"
+local isBak = item and item.kind == "BAK"
 for _, b in ipairs({"btnTryLive", "btnInstallVhd", "btnInstallPart"}) do
     Vml("SetProperty", b, "IsEnabled", isIso and "true" or "false")
 end
 for _, b in ipairs({"btnBootNow", "btnBootRestart", "btnBackup"}) do
     Vml("SetProperty", b, "IsEnabled", isVhd and "true" or "false")
 end
-Vml("SetProperty", "btnRestore", "IsEnabled", "true")   -- restore can make a new VHD any time
+Vml("SetProperty", "btnRestore", "IsEnabled", isBak and "true" or "false")
 Vml("SetProperty", "btnDelete", "IsEnabled", item and "true" or "false")
-Vml("SetProperty", "btnRepair", "IsEnabled", item and "true" or "false")
--- the two boot-menu ticks always show the real state of the selected item
-local inmenu = item and item.inmenu
-Vml("SetProperty", "chkInMenu", "IsEnabled", item and "true" or "false")
-Vml("SetProperty", "chkInMenu", "IsChecked", inmenu and "true" or "false")
-Vml("SetProperty", "chkDefault", "IsEnabled", inmenu and "true" or "false")
-Vml("SetProperty", "chkDefault", "IsChecked", (inmenu and item.id == NS_DEFAULT) and "true" or "false")
+Vml("SetProperty", "btnRepair", "IsEnabled", (isVhd or isIso) and "true" or "false")
 if item then Vml("SetStatusText", item.kind .. ":  " .. item.file) end
 LUA
 
@@ -528,8 +615,7 @@ Interpreter=lua
 <<LUA
 -- the selected ISO installs into a VHD. Guided = the distro's own installer in a quick VM (safe:
 -- it only ever sees the VHD, never your real disks). The VHD then boots on real hardware.
-local i = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
-local iso = LIBRARY and LIBRARY[i + 1]
+local iso = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
 if not iso or iso.kind ~= "ISO" then return end
 
 if Vml("Shell", "command -v qemu-system-x86_64 >/dev/null 2>&1 && echo ok") ~= "ok" then
@@ -559,8 +645,7 @@ LUA
 @Script DoGuidedInstall
 Interpreter=lua
 <<LUA
-local i = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
-local iso = LIBRARY and LIBRARY[i + 1]
+local iso = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
 if not iso then return end
 -- choose a VHD to install into: an existing one, or make a new one
 local vhds = {}
@@ -629,15 +714,46 @@ LUA
 @Script BackupVhd
 Interpreter=lua
 <<LUA
--- backs up only the FILES inside the VHD (not the empty space), so it's small and portable
-Vml("SetStatusText", "Back up (files only, not the whole disk): coming next")
+-- a backup is a sparse copy of the disk file: it takes only the space the disk actually uses
+local item = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
+if not item or item.kind ~= "VHD" then return end
+local stamp = os.date("%Y%m%d-%H%M")
+local dest = NS_BAKS .. "/" .. item.name .. "--" .. stamp .. ".img"
+if Vml("ConfirmDialog", "Back up '" .. item.name .. "'?\n\nThis copies the disk as it is now (" .. item.detail ..
+       ") into your backups. It can take a few minutes.", "Back up") ~= "true" then return end
+Vml("SetProperty", "JobBar", "IsVisible", "true")
+Vml("SetProperty", "jobTitle", "Text", "Backing up " .. item.name)
+Vml("SetProperty", "joblog", "Items", "")
+local cmd = "set -e\n" ..
+    "mkdir -p '" .. NS_BAKS .. "'\n" ..
+    "need=$(du -k '" .. item.file .. "' | cut -f1)\n" ..
+    "free=$(df -k --output=avail '" .. NS_BAKS .. "' | tail -1)\n" ..
+    "if [ \"$free\" -lt \"$need\" ]; then echo \"Not enough free space: needs $((need / 1048576 + 1))G.\"; exit 1; fi\n" ..
+    "echo 'Copying (only the used part of the disk is copied)...'\n" ..
+    "cp --sparse=always '" .. item.file .. "' '" .. dest .. ".part'\n" ..
+    "mv '" .. dest .. ".part' '" .. dest .. "'\n" ..
+    "echo \"Backup saved: $(du -h '" .. dest .. "' | cut -f1)\"\n"
+CURRENT_JOB = Vml("RunProcess", cmd, "joblog", "BackupDone", "bash")
 LUA
 
 @Script RestoreVhd
 Interpreter=lua
 <<LUA
--- unpacks a backup into a fresh VHD (can be a different size)
-Vml("SetStatusText", "Restore into a new VHD: coming next")
+-- a backup is restored as a NEW disk, so nothing existing is overwritten. It is then set up to boot.
+local item = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
+if not item or item.kind ~= "BAK" then
+    return Vml("InfoDialog", "Select a backup in the list first (rows marked BAK), then choose Restore.", "Restore")
+end
+local orig = item.name:match("^(.-)%-%-") or item.name
+local name = Vml("PromptDialog", "Restore", "Name for the restored disk (letters, numbers, dashes):", orig .. "-restored")
+name = name:gsub("%s+", ""):gsub("[^%w%-_]", "")
+if name == "" then return end
+local dest = NS_VHDS .. "/" .. name .. ".img"
+if Vml("Shell", "test -e '" .. dest .. "' && echo yes"):gsub("%s+", "") == "yes" then
+    return Vml("ErrorDialog", "A disk called '" .. name .. "' already exists. Choose another name.", "Restore")
+end
+ns_job{title = "Restoring " .. item.name .. " as " .. name, name = name, file = dest, id = "nostick-" .. name, mode = "prepare",
+       pre = "echo 'Copying the backup...'\ncp --sparse=always '" .. item.file .. "' '" .. dest .. "'"}
 LUA
 
 @Script BootNow
@@ -645,8 +761,7 @@ Interpreter=lua
 <<LUA
 -- restart straight into the selected VHD, skipping the firmware and the boot menu (kexec).
 -- Experimental: it is fast, but it skips the hardware reset a normal restart does.
-local i = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
-local item = LIBRARY and LIBRARY[i + 1]
+local item = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
 if not item or item.kind ~= "VHD" then return end
 if not item.prepared then
     return Vml("InfoDialog", "'" .. item.name .. "' hasn't been set up for booting yet.\n\n" ..
@@ -683,8 +798,7 @@ LUA
 Interpreter=lua
 <<LUA
 -- boot the selected VHD (or ISO, live) at the next restart, once. Adds it to the boot menu first if needed.
-local i = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
-local item = LIBRARY and LIBRARY[i + 1]
+local item = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
 if not item then return end
 local mode, pre = "menu", ""
 if not item.inmenu then
@@ -772,8 +886,7 @@ LUA
 Interpreter=lua
 <<LUA
 -- the "Show in boot menu" tick. On: prepare if needed, then add. Off: hide (stays prepared, so on again is instant).
-local i = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
-local item = LIBRARY and LIBRARY[i + 1]
+local item = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
 if not item then return end
 if item.inmenu then
     if item.id == NS_DEFAULT then NS_DEFAULT = ""; ns_save_conf() end
@@ -800,8 +913,7 @@ Interpreter=lua
 <<LUA
 -- look inside the selected item again and rebuild its boot helper and menu entry from scratch.
 -- Use after a No-Stick update, or when something that used to boot no longer does.
-local i = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
-local item = LIBRARY and LIBRARY[i + 1]
+local item = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
 if not item then return end
 if Vml("ConfirmDialog", "Rebuild the boot setup for '" .. item.name .. "'?\n\nNothing inside it is deleted. " ..
        "It ends up shown in the boot menu.", "Repair boot") ~= "true" then return end
@@ -813,8 +925,7 @@ LUA
 Interpreter=lua
 <<LUA
 -- the "Boot this by default" tick: the highlighted entry in the No-Stick menu, and the one the timer boots
-local i = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
-local item = LIBRARY and LIBRARY[i + 1]
+local item = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
 if not item or not item.inmenu then return Vml("RunScript", "Selected") end
 if item.id == NS_DEFAULT then NS_DEFAULT = "" else NS_DEFAULT = item.id end
 ns_save_conf()
@@ -836,6 +947,90 @@ if NS_TIMEOUT > 0 and (NS_DEFAULT or "") == "" then
         "with no default, the menu always waits for you.", "Auto-boot")
 end
 ns_job{title = "Updating the boot menu", name = "boot menu"}
+LUA
+
+@Script RowPressed
+Interpreter=lua
+<<LUA
+-- a click on a library row selects it; a right-click also opens its menu
+local n = tonumber((Vml("GetSetting", "event_control") or ""):match("(%d+)$"))
+if not n or not LIBRARY or not LIBRARY[n + 1] then return end
+NS_SEL = n
+Vml("RunScript", "Selected")
+if Vml("GetSetting", "mouse_button") == "Right" then
+    local item = LIBRARY[n + 1]
+    local can = item.kind ~= "BAK"
+    Vml("SetProperty", "miShow", "Text", item.inmenu and "Remove from boot menu" or "Show in boot menu")
+    Vml("SetProperty", "miShow", "IsEnabled", can and "true" or "false")
+    Vml("SetProperty", "miDefault", "Text", (item.inmenu and item.id == NS_DEFAULT) and "Stop booting this by default" or "Boot this by default")
+    Vml("SetProperty", "miDefault", "IsEnabled", (can and item.inmenu) and "true" or "false")
+    Vml("SetProperty", "miRename", "IsEnabled", can and "true" or "false")
+    Vml("SetProperty", "miBackup", "IsVisible", item.kind == "VHD" and "true" or "false")
+    Vml("SetProperty", "miRestore", "IsVisible", item.kind == "BAK" and "true" or "false")
+    Vml("ShowContextMenu", "libMenu")
+end
+LUA
+
+@Script StatusClick
+Interpreter=lua
+<<LUA
+-- the coloured marker on a row: click to add the item to the boot menu, or take it out
+local n = tonumber((Vml("GetSetting", "event_control") or ""):match("(%d+)$"))
+if not n or not LIBRARY or not LIBRARY[n + 1] then return end
+NS_SEL = n
+Vml("RunScript", "Selected")
+Vml("RunScript", "ToggleMenu")
+LUA
+
+@Script BackupDone
+Interpreter=lua
+<<LUA
+if Vml("GetSetting", "exit_code") == "0" then
+    Vml("SetProperty", "JobBar", "IsVisible", "false")
+    Vml("SetStatusText", "Backup saved")
+else
+    Vml("SetProperty", "jobTitle", "Text", "Backup failed - the reason is in the log below (Cancel closes this)")
+end
+Vml("RunScript", "Load")
+LUA
+
+@Script RenameItem
+Interpreter=lua
+<<LUA
+-- rename a disk or an ISO. Its boot-menu entry (if it has one) is rewritten to match, so it keeps booting.
+local item = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
+if not item or item.kind == "BAK" then return end
+local isVhd = item.kind == "VHD"
+local old = isVhd and item.name or (item.name:gsub("%.iso$", ""))
+local new = Vml("PromptDialog", "Rename", "New name (letters, numbers, dashes" .. (isVhd and "" or ", dots") .. "):", old)
+new = new:gsub("%s+", ""):gsub(isVhd and "[^%w%-_]" or "[^%w%-_%.]", "")
+if new == "" or new == old then return end
+local dir = isVhd and NS_VHDS or NS_ISOS
+local ext = isVhd and ".img" or ".iso"
+local newfile = dir .. "/" .. new .. ext
+if Vml("Shell", "test -e '" .. newfile .. "' && echo yes"):gsub("%s+", "") == "yes" then
+    return Vml("ErrorDialog", "'" .. new .. "' already exists. Choose another name.", "Rename")
+end
+local newside = isVhd and (dir .. "/" .. new .. ".grub") or (newfile .. ".grub")
+local newid = isVhd and ("nostick-" .. new) or ("nostick-iso-" .. (new:gsub("[^%w%._%-]", "-")))
+-- move the file, then carry the menu entry across with the new path, id and title
+local pre = "mv '" .. item.file .. "' '" .. newfile .. "'\n" ..
+    "for s in '' '.off'; do\n" ..
+    "  if [ -f '" .. item.side .. "'$s ]; then\n" ..
+    "    sed -e 's#/" .. old .. ext .. "#/" .. new .. ext .. "#g' -e 's#\"" .. item.id .. "\"#\"" .. newid .. "\"#g' " ..
+              "-e 's# (" .. old .. ")\" #" .. " (" .. new .. ")\" #' -e 's#\"Live: " .. old .. "\"#\"Live: " .. new .. "\"#' " ..
+              "'" .. item.side .. "'$s > '" .. newside .. "'$s\n" ..
+    "    rm -f '" .. item.side .. "'$s\n" ..
+    "  fi\n" ..
+    "done"
+if item.id == NS_DEFAULT then NS_DEFAULT = newid; ns_save_conf() end
+if item.prepared then
+    ns_job{title = "Renaming " .. old .. " to " .. new, name = new, pre = pre}      -- rewrites the boot menu too
+else
+    Vml("Shell", pre)
+    Vml("SetStatusText", "Renamed to " .. new)
+    Vml("RunScript", "Load")
+end
 LUA
 
 @Script RootScript
@@ -1283,13 +1478,13 @@ LUA
 @Script DeleteItem
 Interpreter=lua
 <<LUA
-local i = tonumber(Vml("GetProperty", "library", "SelectedIndex")) or -1
-local item = LIBRARY and LIBRARY[i + 1]
+local item = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
 if not item then return end
 if Vml("ConfirmDialog", "Delete " .. item.kind .. " '" .. item.name .. "'?\n\n" .. item.file ..
        "\n\nThis removes the file permanently.", "Delete") ~= "true" then return end
 Vml("Shell", "rm -f '" .. item.file .. "' '" .. item.side .. "' '" .. item.side .. ".off'")
-if item.id == NS_DEFAULT then NS_DEFAULT = ""; ns_save_conf() end
+NS_SEL = -1
+if item.id ~= "" and item.id == NS_DEFAULT then NS_DEFAULT = ""; ns_save_conf() end
 if item.inmenu then
     -- it was in the boot menu: rewrite the menu without it (this reloads the library when it finishes)
     return ns_job{title = "Removing " .. item.name .. " from the boot menu", name = item.name}

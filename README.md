@@ -28,13 +28,17 @@ something to the boot menu. Re-run the same command to update.
   disk-image file, never your real drives. No-Stick then prepares the result to boot on real hardware.
 - **One boot-menu entry.** Your main boot menu gains a single "No-Stick" entry. Everything else lives in
   No-Stick's own menu, so your existing entries are never edited.
-- **Tick what you want in the menu**, choose a default, and optionally set a timer to boot it by itself.
+- **One click puts something in the menu.** Each row has a marker: empty is not in the boot menu, orange is in it,
+  green is the default. Right-click a row for the rest: default, rename, back up, delete. A timer can boot the
+  default by itself.
 - **Boot at restart** boots one chosen disk once, then your PC goes back to normal.
 - **Boot now** restarts straight into a disk in seconds (kexec). Experimental.
 - **Try an ISO live** from the menu, without installing. New and lightly tested.
+- **Back up and restore.** A backup is a copy of the disk that takes only the space actually used; restoring
+  makes a new disk, so nothing is overwritten.
 - **Repair boot** rebuilds a disk's boot setup after an update or if something stops booting.
 
-Everything lives in `~/.no-stick`: ISOs in `isos/`, disks in `vhds/`.
+Everything lives in `~/.no-stick`: ISOs in `isos/`, disks in `vhds/`, backups in `backups/`.
 
 ## What works today
 
