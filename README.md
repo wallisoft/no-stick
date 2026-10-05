@@ -93,6 +93,9 @@ needs no new code if its family already has a recipe. To add a family, write a r
 [recipes/README.md](recipes/README.md) explains what one must do and how to test it on your own machine.
 Recipes run as root, so they are reviewed before they ship and are never downloaded at run time.
 
+The list of distros offered for download is separate and is only data: it lives in
+[wallisoft/nostick-distros](https://github.com/wallisoft/nostick-distros), and its links are checked every week.
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE). Made by Wallisoft, with development help from Claude (Anthropic).

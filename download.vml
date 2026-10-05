@@ -1,5 +1,5 @@
 # No-Stick: Download a distro. Reads the community catalogue (wallisoft/nostick-distros) and lets you
-# pick one to download into your library. (Stubbed: lists a built-in starter catalogue for now.)
+# pick one to download into your library. If the live catalogue can't be reached, a built-in copy is used.
 
 @Window Download
 Title=Download a distro
@@ -89,46 +89,55 @@ local raw = Vml("Shell", "curl -fsSL --max-time 8 '" .. CATALOGUE_URL .. "' 2>/d
 local cat = raw ~= "" and json.decode(raw) or nil
 
 if not cat then
-    -- built-in starter catalogue (the usual suspects + the trending immutable distros)
+    -- built-in copy of the catalogue, used when the live one can't be reached (same entries as distros.json
+    -- in wallisoft/nostick-distros at the time of this release)
     cat = {distros = {
-        {name = "Ubuntu 24.04 LTS",     group = "Popular",    size = "6.0G", live = true,  install = true,
-         url = "https://releases.ubuntu.com/24.04/ubuntu-24.04.3-desktop-amd64.iso"},
-        {name = "Linux Mint 22 Cinnamon", group = "Popular",  size = "2.8G", live = true,  install = true,
+        {name = "Debian 13", group = "Tested on real hardware", size = "3.5G", live = true, install = true,
+         status = "installs and boots",
+         url = "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/debian-live-13.7.0-amd64-gnome.iso"},
+        {name = "Ubuntu 24.04 LTS", group = "Tested on real hardware", size = "6.2G", live = true, install = true,
+         status = "boots live; installs like Debian",
+         url = "https://releases.ubuntu.com/24.04/ubuntu-24.04.4-desktop-amd64.iso"},
+        {name = "Fedora Workstation 41", group = "Tested on real hardware", size = "2.3G", live = true, install = true,
+         status = "installs and boots (older release)",
+         url = "https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso"},
+        {name = "Linux Mint 22 Cinnamon", group = "Tested on real hardware", size = "2.7G", live = true, install = true,
+         status = "boots; new PCs need a newer kernel",
          url = "https://mirrors.edge.kernel.org/linuxmint/stable/22/linuxmint-22-cinnamon-64bit.iso"},
-        {name = "Fedora Workstation 41", group = "Popular",    size = "2.2G", live = true,  install = true,
-         url = "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Workstation/x86_64/iso/"},
-        {name = "Debian 13",            group = "Popular",     size = "3.7G", live = true,  install = true,
-         url = "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/"},
-        {name = "Bazzite",              group = "Immutable (new wave)", size = "5.5G", live = false, install = true,
-         url = "https://bazzite.gg"},
-        {name = "Bluefin",              group = "Immutable (new wave)", size = "5.2G", live = false, install = true,
-         url = "https://projectbluefin.io"},
-        {name = "Aurora (KDE)",         group = "Immutable (new wave)", size = "5.2G", live = false, install = true,
-         url = "https://getaurora.dev"},
-        {name = "Fedora Silverblue 41", group = "Immutable (new wave)", size = "3.1G", live = false, install = true,
-         url = "https://fedoraproject.org/atomic-desktops/silverblue/"},
-        {name = "Vanilla OS",           group = "Immutable (new wave)", size = "4.0G", live = true,  install = true,
-         url = "https://vanillaos.org"},
-        {name = "Arch Linux",           group = "For the brave", size = "1.3G", live = true, install = true,
-         url = "https://archlinux.org/download/"},
+        {name = "Ubuntu 26.04 LTS", group = "Same recipe - not yet tested", size = "6.1G", live = true, install = true,
+         status = "should work - tell us",
+         url = "https://releases.ubuntu.com/26.04/ubuntu-26.04-desktop-amd64.iso"},
+        {name = "Linux Mint 22.3 Cinnamon", group = "Same recipe - not yet tested", size = "2.9G", live = true, install = true,
+         status = "should work - tell us",
+         url = "https://mirrors.edge.kernel.org/linuxmint/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso"},
+        {name = "Fedora Workstation 44", group = "Same recipe - not yet tested", size = "2.7G", live = true, install = true,
+         status = "should work - tell us",
+         url = "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Workstation/x86_64/iso/Fedora-Workstation-Live-44-1.7.x86_64.iso"},
+        {name = "Arch Linux", group = "Experimental", size = "1.5G", live = true, install = true,
+         status = "recipe not booted in its current form",
+         url = "https://mirrors.edge.kernel.org/archlinux/iso/latest/archlinux-x86_64.iso"},
     }}
 end
 
 DISTROS = cat.distros
 local lines, group = {}, nil
--- preserve a sensible group order
-local order = {"Popular", "Immutable (new wave)", "For the brave", "Other"}
+-- headings appear in the order the catalogue first mentions them
+local order, known = {}, {}
+for _, d in ipairs(DISTROS) do
+    local g = d.group or "Other"
+    if not known[g] then known[g] = true; order[#order + 1] = g end
+end
 local seen = {}
 for _, g in ipairs(order) do
     for _, d in ipairs(DISTROS) do
         if (d.group or "Other") == g then
             if group ~= g then
-                lines[#lines + 1] = "-- " .. g .. " --"
+                lines[#lines + 1] = "-- " .. (g:gsub(",", ";")) .. " --"
                 group = g
             end
             d._row = #lines + 1
-            local tags = (d.live and "live" or "") .. (d.live and d.install and " + " or "") .. (d.install and "install" or "")
-            lines[#lines + 1] = string.format("   %-26s %6s   %s", d.name, d.size or "", tags)
+            local tags = d.status or ((d.live and "live" or "") .. (d.live and d.install and " + " or "") .. (d.install and "install" or ""))
+            lines[#lines + 1] = string.format("   %-26s %6s   %s", (d.name:gsub(",", ";")), d.size or "", (tags:gsub(",", ";")))
             seen[d] = true
         end
     end

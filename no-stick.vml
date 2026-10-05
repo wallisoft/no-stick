@@ -17,7 +17,7 @@
 # content before showing it, so Height below is only a floor). The info bar and the Delete button are both docked to
 # the bottom with the same height and bottom margin, which is what keeps them level on any font.
 @Window NoStick
-Title=No-Stick 0.8.0
+Title=No-Stick 0.8.1
 Width=860
 Height=560
 Resizable=false
