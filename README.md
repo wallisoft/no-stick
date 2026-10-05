@@ -33,7 +33,7 @@ something to the boot menu. Re-run the same command to update.
   default by itself.
 - **Boot at restart** boots one chosen disk once, then your PC goes back to normal.
 - **Boot now** restarts straight into a disk in seconds (kexec). Experimental.
-- **Try an ISO live** from the menu, without installing. New and lightly tested.
+- **Try it live** restarts straight into an ISO's live system, without installing. New and lightly tested.
 - **Back up and restore.** A backup is a copy of the disk that takes only the space actually used; restoring
   makes a new disk, so nothing is overwritten.
 - **Repair boot** rebuilds a disk's boot setup after an update or if something stops booting.
@@ -87,8 +87,11 @@ is a separate product: free for individuals, but not open source.
 ## Contributing
 
 Issues and pull requests are welcome, especially reports of what does or doesn't boot on your hardware.
-A new distro usually needs no new code if it uses a supported initramfs family; if it doesn't boot,
-the output of "Repair boot" and the last lines on screen are the most useful things to include.
+
+Support for a family of distros lives in one small file each, in [recipes/](recipes/). A new distro usually
+needs no new code if its family already has a recipe. To add a family, write a recipe:
+[recipes/README.md](recipes/README.md) explains what one must do and how to test it on your own machine.
+Recipes run as root, so they are reviewed before they ship and are never downloaded at run time.
 
 ## Licence
 

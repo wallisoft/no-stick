@@ -1,0 +1,131 @@
+# No-Stick recipe: how to make one family of Linux systems boot from a disk image file.
+# name:    Fedora and relatives (dracut)
+# tested:  Fedora Workstation 41 (boots, SELinux enforcing)
+# live:    Fedora live ISOs - entries are generated, not yet booted
+#
+# Module: 90nostick attaches the image while dracut waits for the root device.
+# The initramfs is rebuilt with hostonly="no", because the installer builds it for the virtual machine only.
+#
+# What a recipe provides, and what it may use, is described in recipes/README.md.
+
+recipe_detect() {
+    [ -d "$M/usr/lib/dracut/modules.d" ] && { [ -x "$M/usr/bin/dracut" ] || [ -x "$M/usr/sbin/dracut" ]; }
+}
+
+recipe_install() {
+    ARGS="ro"
+    echo "Boot system: dracut (Fedora and relatives). Installing the No-Stick module..."
+    MD="$M/usr/lib/dracut/modules.d/90nostick"
+    mkdir -p "$MD" "$M/etc/dracut.conf.d" "$M/etc/kernel/install.d"
+    cat > "$MD/module-setup.sh" << 'NSHOOKE'
+#!/bin/bash
+# no-stick: boot from a disk image file that lives on a partition of the real machine
+check() { return 255; }                       # only when asked for (see /etc/dracut.conf.d/90-nostick.conf)
+depends() { return 0; }
+installkernel() { hostonly='' instmods loop ext4; }
+install() {
+    inst_multiple losetup mount mkdir cat rm
+    inst_hook initqueue/settled 50 "$moddir/nostick-attach.sh"
+    inst_hook initqueue/finished 50 "$moddir/nostick-finished.sh"
+}
+NSHOOKE
+    cat > "$MD/nostick-attach.sh" << 'NSHOOKF'
+#!/bin/sh
+# no-stick: attach the disk image (with its partitions) so the root inside it can be found.
+#   vhdhost=<fs UUID of host partition>  vhdfile=<path on that partition>
+# Called again and again while the system waits for its root device, so it must be safe to repeat.
+nostick_attach() {
+    local f h dev
+    [ -e /run/nostick/attached ] && return 0
+    [ -e /run/nostick/failed ] && return 0
+    f=$(getarg vhdfile=)
+    [ -n "$f" ] || return 0
+    h=$(getarg vhdhost=)
+    mkdir -p /run/nostick/host
+    if [ -z "$h" ]; then warn "nostick: vhdhost= is required"; : > /run/nostick/failed; return 0; fi
+    [ -e "/dev/disk/by-uuid/$h" ] || return 0          # the real disk is not there yet; we are called again
+    modprobe -q loop max_part=15 2>/dev/null || modprobe -q loop
+    modprobe -q ext4
+    if ! mount -t ext4 -o rw "/dev/disk/by-uuid/$h" /run/nostick/host; then
+        warn "nostick: host mount failed ($h)"; : > /run/nostick/failed; return 0
+    fi
+    if [ ! -f "/run/nostick/host$f" ]; then
+        warn "nostick: image not found at /run/nostick/host$f"; : > /run/nostick/failed; return 0
+    fi
+    dev=$(losetup --find --show --partscan "/run/nostick/host$f")
+    if [ -z "$dev" ]; then warn "nostick: could not attach /run/nostick/host$f"; : > /run/nostick/failed; return 0; fi
+    echo "$dev" > /run/nostick/attached
+    info "nostick: $f attached as $dev"
+    udevadm settle 2>/dev/null
+    return 0
+}
+nostick_attach
+NSHOOKF
+    cat > "$MD/nostick-finished.sh" << 'NSHOOKG'
+#!/bin/sh
+# no-stick: keep the wait loop going until the image has been attached (or has clearly failed)
+[ -z "$(getarg vhdfile=)" ] || [ -e /run/nostick/attached ] || [ -e /run/nostick/failed ]
+NSHOOKG
+    chmod 755 "$MD/module-setup.sh" "$MD/nostick-attach.sh" "$MD/nostick-finished.sh"
+    # include the module in every initramfs built from now on, with drivers for real hardware
+    # (the installer's own initramfs only carries drivers for the virtual machine it ran in)
+    cat > "$M/etc/dracut.conf.d/90-nostick.conf" << 'NSHOOKH'
+# no-stick: this system boots from a disk image file on real hardware
+add_dracutmodules+=" nostick "
+hostonly="no"
+NSHOOKH
+    # keep a fixed name on the newest kernel, so the boot menu entry survives kernel updates
+    cat > "$M/etc/kernel/install.d/99-nostick.install" << 'NSHOOKI'
+#!/bin/sh
+# no-stick: keep /boot/vmlinuz and /boot/initramfs.img on the newest kernel that has an initramfs
+cd /boot || exit 0
+v=""
+for k in $(ls -1 vmlinuz-* 2>/dev/null | sed 's/^vmlinuz-//' | grep -v rescue | sort -V); do
+    [ -e "initramfs-$k.img" ] && v="$k"
+done
+[ -n "$v" ] || exit 0
+ln -sfn "vmlinuz-$v" vmlinuz
+ln -sfn "initramfs-$v.img" initramfs.img
+exit 0
+NSHOOKI
+    chmod 755 "$M/etc/kernel/install.d/99-nostick.install"
+    echo "Rebuilding the initramfs with drivers for real hardware (a few minutes)..."
+    for kv in $(ls -1 "$M/usr/lib/modules" 2>/dev/null); do
+        [ -e "$M/boot/vmlinuz-$kv" ] || continue
+        echo "  kernel $kv"
+        if ! chroot "$M" dracut --force "/boot/initramfs-$kv.img" "$kv" > /tmp/nostick-dracut.log 2>&1 < /dev/null; then
+            tail -15 /tmp/nostick-dracut.log; echo "dracut could not build the initramfs for $kv"; exit 6
+        fi
+    done
+    chroot "$M" /bin/sh /etc/kernel/install.d/99-nostick.install < /dev/null
+    echo "Newest kernel in $NAME: $(readlink "$M/boot/vmlinuz" 2>/dev/null || echo unknown)"
+    # files written from outside carry no SELinux labels; label them, or have the system do it on first boot
+    if [ -f "$M/etc/selinux/config" ]; then
+        FC=$(ls "$M"/etc/selinux/*/contexts/files/file_contexts 2>/dev/null | head -1)
+        if [ -n "$FC" ] && chroot "$M" /usr/sbin/setfiles -F "${FC#"$M"}" /usr/lib/dracut/modules.d/90nostick \
+               /etc/dracut.conf.d/90-nostick.conf /etc/kernel/install.d/99-nostick.install /boot > /dev/null 2>&1 < /dev/null; then
+            echo "SELinux labels set on the new files."
+        else
+            : > "$M/.autorelabel"
+            echo "SELinux will relabel the system on its first boot (a few extra minutes, once)."
+        fi
+    fi
+}
+
+recipe_live() {
+    # Fedora live ISOs: a LiveOS folder, with the kernel in images/pxeboot (older) or boot/x86_64/loader (newer)
+    [ -d "$M/LiveOS" ] || return 1
+    local label
+    if [ -f "$M/images/pxeboot/vmlinuz" ]; then
+        K=/images/pxeboot/vmlinuz; I=/images/pxeboot/initrd.img
+    elif [ -f "$M/boot/x86_64/loader/linux" ]; then
+        K=/boot/x86_64/loader/linux; I=/boot/x86_64/loader/initrd
+    else
+        return 1
+    fi
+    label=$(blkid -s LABEL -o value "$ISO" 2>/dev/null | sed 's/ /\\x20/g')
+    [ -n "$label" ] || return 1
+    ARGS="root=live:CDLABEL=$label rd.live.image iso-scan/filename=$REL"
+    KIND="Fedora live"
+    return 0
+}

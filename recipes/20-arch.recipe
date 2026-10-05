@@ -1,0 +1,73 @@
+# No-Stick recipe: how to make one family of Linux systems boot from a disk image file.
+# name:    Arch Linux (mkinitcpio)
+# tested:  an earlier version of this hook booted Arch; this whole-disk version has NOT been booted yet
+# live:    Arch ISOs - entries are generated, not yet booted
+#
+# Hook: nostickloop, placed before "filesystems" in HOOKS.
+#
+# What a recipe provides, and what it may use, is described in recipes/README.md.
+
+recipe_detect() {
+    [ -f "$M/etc/mkinitcpio.conf" ]
+}
+
+recipe_install() {
+    ARGS="rw"
+    echo "Boot system: mkinitcpio (Arch). Installing the No-Stick hook..."
+    mkdir -p "$M/etc/initcpio/hooks" "$M/etc/initcpio/install"
+    cat > "$M/etc/initcpio/hooks/nostickloop" << 'NSHOOKC'
+#!/usr/bin/ash
+# no-stick: attach a disk image file (with its partitions) before root is looked for
+#   vhdhost=<fs UUID of host partition>  vhdfile=<path on that partition>
+run_hook() {
+    local f="" h="" i=0 p dev
+    for p in $(cat /proc/cmdline); do
+        case "$p" in
+            vhdfile=*) f="${p#vhdfile=}" ;;
+            vhdhost=*) h="${p#vhdhost=}" ;;
+        esac
+    done
+    [ -z "$f" ] && return 0
+    [ -n "$h" ] || { echo "nostick: vhdhost= is required"; return 1; }
+    modprobe -q loop
+    modprobe -q ext4
+    while [ ! -e "/dev/disk/by-uuid/$h" ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done
+    mkdir -p /run/nostick/host
+    mount -t ext4 -o rw "/dev/disk/by-uuid/$h" /run/nostick/host || { echo "nostick: host mount failed ($h)"; return 1; }
+    [ -f "/run/nostick/host$f" ] || { echo "nostick: image not found at /run/nostick/host$f"; return 1; }
+    dev=$(losetup -f)
+    losetup -P "$dev" "/run/nostick/host$f" || { echo "nostick: losetup failed"; return 1; }
+    echo "nostick: $f attached as $dev"
+    udevadm settle 2>/dev/null || true
+}
+NSHOOKC
+    chmod 755 "$M/etc/initcpio/hooks/nostickloop"
+    if [ ! -f "$M/etc/initcpio/install/nostickloop" ]; then
+        cat > "$M/etc/initcpio/install/nostickloop" << 'NSHOOKD'
+#!/bin/bash
+build() {
+    add_module loop
+    add_module ext4
+    add_binary losetup
+    add_runscript
+}
+help() {
+    echo "no-stick: boot from a disk image file on a host partition (vhdhost= vhdfile=)"
+}
+NSHOOKD
+    fi
+    if ! grep -q '^HOOKS=.*nostickloop' "$M/etc/mkinitcpio.conf"; then
+        sed -i '/^HOOKS=/ s/ filesystems/ nostickloop filesystems/' "$M/etc/mkinitcpio.conf"
+    fi
+    echo "Rebuilding the initramfs (a minute or so)..."
+    chroot "$M" mkinitcpio -P < /dev/null 2>&1 || echo "(mkinitcpio returned a warning status - usually just missing-firmware notes)"
+}
+
+recipe_live() {
+    [ -f "$M/arch/boot/x86_64/vmlinuz-linux" ] || return 1
+    K=/arch/boot/x86_64/vmlinuz-linux
+    if [ -f "$M/arch/boot/x86_64/initramfs-linux.img" ]; then I=/arch/boot/x86_64/initramfs-linux.img; fi
+    ARGS="archisobasedir=arch img_dev=/dev/disk/by-uuid/$HOSTUUID img_loop=$REL earlymodules=loop"
+    KIND="Arch live"
+    return 0
+}

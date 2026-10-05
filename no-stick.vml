@@ -8,6 +8,8 @@
 #   ~/.no-stick/isos/NAME.iso.grub a live-boot entry for that ISO, same idea
 #   ~/.no-stick/menu.conf          default=<entry id> and timeout=<seconds> for the No-Stick menu
 #   ~/.no-stick/backups/NAME--DATE.img   a backup of a virtual disk (a sparse copy)
+#   recipes/*.recipe               beside this file: the distro-specific part, one file per boot-system family
+#   ~/.no-stick/recipes/*.recipe   your own recipes, tried first (for writing and testing new ones)
 #   /boot/no-stick/grub.cfg        the No-Stick menu, generated from the .grub files
 # The main GRUB menu only ever holds ONE "No-Stick" entry that opens /boot/no-stick/grub.cfg.
 
@@ -15,7 +17,7 @@
 # content before showing it, so Height below is only a floor). The info bar and the Delete button are both docked to
 # the bottom with the same height and bottom margin, which is what keeps them level on any font.
 @Window NoStick
-Title=No-Stick 0.7.0
+Title=No-Stick 0.8.0
 Width=860
 Height=560
 Resizable=false
@@ -303,6 +305,13 @@ NS_VHDS = NS_DIR .. "/vhds"
 NS_ISOS = NS_DIR .. "/isos"
 run("mkdir -p '" .. NS_VHDS .. "' '" .. NS_ISOS .. "'")
 
+-- the folder this app was started from: the .vml named on the command line, or else the program's own folder
+NS_APPDIR = run([[p=$(tr '\0' '\n' < /proc/$PPID/cmdline | grep '\.vml$' | tail -1)
+if [ -n "$p" ]; then cd /proc/$PPID/cwd 2>/dev/null && cd "$(dirname "$p")" 2>/dev/null && pwd -P
+else dirname "$(readlink -f /proc/$PPID/exe)"; fi]])
+-- recipe folders, in the order they are tried: your own first, then the ones that came with No-Stick
+NS_RECIPES = NS_DIR .. "/recipes:" .. NS_APPDIR .. "/recipes"
+
 -- boot-menu settings: which entry is the default, and the auto-boot timer (0 = wait for a choice)
 NS_DEFAULT = run("sed -n 's/^default=//p' '" .. NS_DIR .. "/menu.conf' 2>/dev/null | head -1")
 NS_TIMEOUT = tonumber(run("sed -n 's/^timeout=//p' '" .. NS_DIR .. "/menu.conf' 2>/dev/null | head -1")) or 0
@@ -317,7 +326,8 @@ function ns_save_conf()
         (NS_TIMEOUT or 0) .. "' > '" .. NS_DIR .. "/menu.conf'")
 end
 
--- start a boot-menu job. mode: "menu" (just rewrite the menu), "prepare" (a VHD), "iso" (a live entry)
+-- start a boot-menu job. mode: "menu" (just rewrite the menu), "prepare" (a VHD), "iso" (a live entry),
+-- "skip" (leave the menu alone). reboot = boot it at the next restart; now = restart into it immediately.
 function ns_job(t)
     Vml("SetSetting", "ns_job_title", t.title or "Updating the boot menu")
     Vml("SetSetting", "ns_job_name", t.name or "")
@@ -326,6 +336,7 @@ function ns_job(t)
     Vml("SetSetting", "ns_job_mode", t.mode or "menu")
     Vml("SetSetting", "ns_job_pre", t.pre or "")
     Vml("SetSetting", "ns_job_reboot", t.reboot and "1" or "0")
+    Vml("SetSetting", "ns_job_now", t.now and "1" or "0")
     Vml("RunScript", "StartPrepare")
 end
 
@@ -630,8 +641,8 @@ LUA
 @Script TryLive
 Interpreter=lua
 <<LUA
--- boot the selected ISO live at the next restart: nothing is installed, the ISO is not changed
-Vml("RunScript", "BootRestart")
+-- boot the selected ISO's live system right now: nothing is installed, the ISO is not changed
+Vml("RunScript", "BootNow")
 LUA
 
 @Script InstallVhd
@@ -783,28 +794,31 @@ LUA
 @Script BootNow
 Interpreter=lua
 <<LUA
--- restart straight into the selected VHD, skipping the firmware and the boot menu (kexec).
--- Experimental: it is fast, but it skips the hardware reset a normal restart does.
+-- restart straight into the selected disk, or into the selected ISO's live system, skipping the firmware
+-- and the boot menu (kexec). Fast, but it skips the hardware reset a normal restart does.
 local item = LIBRARY and LIBRARY[(NS_SEL or -1) + 1]
-if not item or item.kind ~= "VHD" then return end
-if not item.prepared then
+if not item or item.kind == "BAK" then return end
+local isIso = item.kind == "ISO"
+if not isIso and not item.prepared then
     return Vml("InfoDialog", "'" .. item.name .. "' hasn't been set up for booting yet.\n\n" ..
-        "Tick 'Show in boot menu' first, then try again.", "Boot now")
+        "Click its marker to add it to the boot menu first, then try again.", "Boot now")
 end
 if Vml("Shell", "command -v kexec >/dev/null 2>&1 || [ -x /usr/sbin/kexec ] || [ -x /sbin/kexec ]; echo $?"):gsub("%s+", "") ~= "0" then
-    if Vml("ConfirmDialog", "Boot now needs a small system tool called kexec.\n\nInstall it now? (kexec-tools)", "Boot now") ~= "true" then return end
+    if Vml("ConfirmDialog", "This needs a small system tool called kexec.\n\nInstall it now? (kexec-tools)", "Boot now") ~= "true" then return end
     Vml("SetProperty", "JobBar", "IsVisible", "true")
-    Vml("SetProperty", "jobTitle", "Text", "Installing kexec-tools - click Boot now again when it finishes")
+    Vml("SetProperty", "jobTitle", "Text", "Installing kexec-tools - try again when it finishes")
     Vml("SetProperty", "joblog", "Items", "")
     CURRENT_JOB = Vml("RunProcess", NS_ASROOT .. "as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y kexec-tools < /dev/null",
                       "joblog", "KexecInstalled", "bash")
     return
 end
-if Vml("ConfirmDialog", "Restart straight into '" .. item.name .. "' now?\n\n" ..
-       "SAVE YOUR WORK FIRST: this closes everything and restarts within seconds.\n\n" ..
-       "This is the experimental fast route. If the screen stays black afterwards, hold the power button " ..
-       "and use 'Boot at restart' instead.", "Boot now") ~= "true" then return end
-ns_job{title = "Restarting into " .. item.name, name = item.name, file = item.file, id = item.id, mode = "bootnow"}
+local what = isIso and ("Restart into the live system on '" .. item.name .. "' now?\n\nNothing is installed and the ISO is not changed.")
+                    or ("Restart straight into '" .. item.name .. "' now?")
+if Vml("ConfirmDialog", what .. "\n\nSAVE YOUR WORK FIRST: this closes everything and restarts within seconds.\n\n" ..
+       "If the screen stays black afterwards, hold the power button and use the boot menu instead.", "Boot now") ~= "true" then return end
+-- an ISO that has no live entry yet gets one first (and joins the boot menu), in the same step
+local mode = (isIso and not item.prepared) and "iso" or "skip"
+ns_job{title = "Restarting into " .. item.name, name = item.name, file = item.file, id = item.id, mode = mode, now = true}
 LUA
 
 @Script KexecInstalled
@@ -855,23 +869,25 @@ local id     = Vml("GetSetting", "ns_job_id")
 local mode   = Vml("GetSetting", "ns_job_mode")
 local pre    = Vml("GetSetting", "ns_job_pre")
 local reboot = Vml("GetSetting", "ns_job_reboot") == "1"
+local now    = Vml("GetSetting", "ns_job_now") == "1"
 Vml("SetProperty", "JobBar", "IsVisible", "true")
 Vml("SetProperty", "jobTitle", "Text", title)
 Vml("SetProperty", "joblog", "Items", "")
 -- everything that needs root goes into ONE small script, so there is one password prompt, not three
-local steps = "set -e\n"
+local steps = "set -e\nexport NOSTICK_RECIPES='" .. NS_RECIPES .. "'\n"
 if mode == "prepare" then
     steps = steps .. "bash \"$T\" prepare '" .. file .. "' '" .. name .. "' \"$ME\"\n"
 elseif mode == "iso" then
     steps = steps .. "bash \"$T\" iso '" .. file .. "' '" .. id .. "' \"$ME\"\n"
 end
-if mode == "bootnow" then
-    steps = steps .. "bash \"$T\" bootnow '" .. file .. "'\n"
-else
+if mode ~= "skip" then
     steps = steps .. "bash \"$T\" menu '" .. NS_DIR .. "'\n"
 end
 if reboot then
     steps = steps .. "bash \"$T\" bootnext '" .. id .. "'\n"
+end
+if now then
+    steps = steps .. "bash \"$T\" bootnow '" .. file .. "'\n"
 end
 local cmd = "set -e\n" .. NS_ASROOT ..
     "T=$(mktemp)\nR=$(mktemp)\nME=$(id -un)\n" ..
@@ -1065,17 +1081,40 @@ Interpreter=lua
 --                                          sudo bash FILE menu NOSTICK_DIR
 --                                          sudo bash FILE bootnext [ENTRY_ID]
 --                                          sudo bash FILE bootnow IMG
--- prepare: finds the installed system in the image (ext4, or btrfs with a subvolume), installs the boot hook for its
---          initramfs family (initramfs-tools, mkinitcpio or dracut),
+-- prepare: finds the installed system in the image (ext4, or btrfs with a subvolume), picks the recipe for its boot
+--          system from the recipes/ folder (the distro-specific part lives there, one file per family),
 --          rebuilds the initramfs, and writes NAME.grub (the menu entry) beside the image.
--- iso:     looks inside the ISO, works out how its live system boots, and writes ISOFILE.grub.
+-- iso:     looks inside the ISO, asks the recipes how its live system boots, and writes ISOFILE.grub.
 -- menu:    rebuilds /boot/no-stick/grub.cfg from every .grub file (vhds and isos) plus menu.conf, and
 --          makes sure the main GRUB menu has the single "No-Stick" entry.
 -- bootnext: the next restart opens No-Stick and boots ENTRY_ID by itself, once.
--- bootnow: loads the image's kernel with kexec, using the same boot line as its menu entry, and restarts into it.
+-- bootnow: loads a disk's or ISO's kernel with kexec, using the same boot line as its menu entry, and restarts into it.
 return [==[
 set -eu
 MODE="${1:-}"
+
+# Distro recipes: one file per boot-system family, in the folders listed in NOSTICK_RECIPES (colon-separated;
+# your own ~/.no-stick/recipes first, then the ones shipped with No-Stick). The first recipe whose test
+# function succeeds is used. See recipes/README.md for what a recipe must provide.
+RECIPE_FILE=""; RECIPE_NAME=""
+find_recipe() {      # $1 = recipe_detect (an installed system is mounted at $M) or recipe_live (an ISO is mounted at $M)
+    local want="$1" d r dirs
+    IFS=: read -r -a dirs <<< "${NOSTICK_RECIPES:-}"
+    for d in "${dirs[@]}"; do
+        [ -d "$d" ] || continue
+        for r in "$d"/*.recipe; do
+            [ -f "$r" ] || continue
+            unset -f recipe_detect recipe_install recipe_live 2>/dev/null || true
+            . "$r"
+            if type "$want" >/dev/null 2>&1 && "$want"; then
+                RECIPE_FILE="$r"
+                RECIPE_NAME=$(sed -n 's/^# name: *//p' "$r" | head -1)
+                return 0
+            fi
+        done
+    done
+    return 1
+}
 
 ensure_main_entry() {
     if grep -qs 'no-stick/grub.cfg' /boot/grub/grub.cfg; then return 0; fi
@@ -1150,32 +1189,41 @@ do_bootnext() {
 
 do_bootnow() {
     IMG="$1"
-    SIDE="${IMG%.img}.grub"
+    case "$IMG" in
+        *.iso) SIDE="$IMG.grub"; DEV='\(iso\)' ;;
+        *)     SIDE="${IMG%.img}.grub"; DEV='\(vhd,[a-z]+[0-9]+\)' ;;
+    esac
     [ -f "$SIDE" ] || SIDE="$SIDE.off"
-    [ -f "$SIDE" ] || { echo "No boot setup found for this disk - tick 'Show in boot menu' first."; exit 2; }
+    [ -f "$SIDE" ] || { echo "No boot setup found for this item - add it to the boot menu first."; exit 2; }
     KEXEC=$(command -v kexec || true)
     [ -n "$KEXEC" ] || { echo "kexec is not installed."; exit 2; }
 
-    # the menu entry is the single source of truth: same partition, kernel, initrd and boot line
-    LLINE=$(grep -m1 -E '^ *linux \(vhd,[a-z]+[0-9]+\)' "$SIDE" || true)
-    ILINE=$(grep -m1 -E '^ *initrd \(vhd,[a-z]+[0-9]+\)' "$SIDE" || true)
+    # the menu entry is the single source of truth: same kernel, initrd and boot line
+    LLINE=$(grep -m1 -E "^ *linux $DEV" "$SIDE" || true)
+    ILINE=$(grep -m1 -E "^ *initrd $DEV" "$SIDE" || true)
     if [ -z "$LLINE" ] || [ -z "$ILINE" ]; then
-        echo "This disk's menu entry is the older kind. Click 'Repair boot' once, then try again."; exit 2
+        echo "This item's menu entry is the older kind. Click 'Repair boot' once, then try again."; exit 2
     fi
-    PART=$(printf '%s\n' "$LLINE" | sed -E 's/^ *linux \(vhd,[a-z]+([0-9]+)\).*/\1/')
-    KPATH=$(printf '%s\n' "$LLINE" | sed -E 's/^ *linux \(vhd,[a-z]+[0-9]+\)([^ ]+).*/\1/')
-    CMDLINE=$(printf '%s\n' "$LLINE" | sed -E 's/^ *linux \(vhd,[a-z]+[0-9]+\)[^ ]+ *//')
-    IPART=$(printf '%s\n' "$ILINE" | sed -E 's/^ *initrd \(vhd,[a-z]+([0-9]+)\).*/\1/')
-    IPATH=$(printf '%s\n' "$ILINE" | sed -E 's/^ *initrd \(vhd,[a-z]+[0-9]+\)([^ ]+).*/\1/')
-    [ "$PART" = "$IPART" ] || { echo "Kernel and initrd are on different partitions - not supported by Boot now yet."; exit 2; }
+    KPATH=$(printf '%s\n' "$LLINE" | sed -E "s/^ *linux $DEV([^ ]+).*/\1/")
+    CMDLINE=$(printf '%s\n' "$LLINE" | sed -E "s/^ *linux $DEV[^ ]+ *//")
+    IPATH=$(printf '%s\n' "$ILINE" | sed -E "s/^ *initrd $DEV([^ ]+).*/\1/")
 
     M=$(mktemp -d /tmp/nostick.XXXXXX)
-    LOOP=$(losetup --find --show --partscan --read-only "$IMG")
-    sleep 1
-    cleanup() { umount "$M" 2>/dev/null || true; losetup -d "$LOOP" 2>/dev/null || true; rmdir "$M" 2>/dev/null || true; }
+    LOOP=""
+    cleanup() { umount "$M" 2>/dev/null || true; [ -z "$LOOP" ] || losetup -d "$LOOP" 2>/dev/null || true; rmdir "$M" 2>/dev/null || true; }
     trap cleanup EXIT
-    mount -o ro,noload "${LOOP}p${PART}" "$M" 2>/dev/null || mount -o ro "${LOOP}p${PART}" "$M"
-    [ -e "$M$KPATH" ] && [ -e "$M$IPATH" ] || { echo "Kernel or initrd not found inside the disk."; exit 2; }
+    case "$IMG" in
+        *.iso)
+            mount -o loop,ro "$IMG" "$M" ;;
+        *)
+            PART=$(printf '%s\n' "$LLINE" | sed -E 's/^ *linux \(vhd,[a-z]+([0-9]+)\).*/\1/')
+            IPART=$(printf '%s\n' "$ILINE" | sed -E 's/^ *initrd \(vhd,[a-z]+([0-9]+)\).*/\1/')
+            [ "$PART" = "$IPART" ] || { echo "Kernel and initrd are on different partitions - not supported by Boot now yet."; exit 2; }
+            LOOP=$(losetup --find --show --partscan --read-only "$IMG")
+            sleep 1
+            mount -o ro,noload "${LOOP}p${PART}" "$M" 2>/dev/null || mount -o ro "${LOOP}p${PART}" "$M" ;;
+    esac
+    [ -e "$M$KPATH" ] && [ -e "$M$IPATH" ] || { echo "Kernel or initrd not found inside it."; exit 2; }
     echo "Loading $(readlink -f "$M$KPATH" | sed "s|^$M||")"
     echo "Boot line: $CMDLINE"
     # -s uses the signed-kernel route (needed with Secure Boot); fall back to the classic one
@@ -1202,29 +1250,10 @@ do_iso() {
     trap cleanup EXIT
     mount -o loop,ro "$ISO" "$M"
 
-    K=""; I=""
-    if [ -f "$M/casper/vmlinuz" ]; then
-        # Ubuntu, Mint and relatives
-        K=/casper/vmlinuz
-        for c in initrd initrd.lz initrd.gz initrd.img; do
-            if [ -z "$I" ] && [ -f "$M/casper/$c" ]; then I="/casper/$c"; fi
-        done
-        ARGS="boot=casper iso-scan/filename=$REL noprompt noeject ---"
-        KIND="Ubuntu/Mint live"
-    elif ls "$M"/live/vmlinuz* >/dev/null 2>&1; then
-        # Debian live
-        kf=$(ls "$M"/live/vmlinuz* | head -1); inf=$(ls "$M"/live/initrd* 2>/dev/null | head -1)
-        K="/live/${kf##*/}"; [ -n "$inf" ] && I="/live/${inf##*/}"
-        ARGS="boot=live components findiso=$REL"
-        KIND="Debian live"
-    elif [ -f "$M/arch/boot/x86_64/vmlinuz-linux" ]; then
-        K=/arch/boot/x86_64/vmlinuz-linux
-        [ -f "$M/arch/boot/x86_64/initramfs-linux.img" ] && I=/arch/boot/x86_64/initramfs-linux.img
-        ARGS="archisobasedir=arch img_dev=/dev/disk/by-uuid/$HOSTUUID img_loop=$REL earlymodules=loop"
-        KIND="Arch live"
-    fi
+    K=""; I=""; ARGS=""; KIND=""
+    find_recipe recipe_live || true
     if [ -z "$K" ] || [ -z "$I" ]; then
-        echo "No-Stick doesn't know how to live-boot this ISO yet (supported: Ubuntu, Mint, Debian live, Arch)."; exit 4
+        echo "No-Stick has no recipe that can live-boot this ISO yet."; exit 4
     fi
 
     cat > "$SIDE" << NSENTRY
@@ -1315,243 +1344,15 @@ do_prepare() {
 
     for d in dev dev/pts proc sys run; do mount --bind "/$d" "$M/$d"; done
 
-    if [ -d "$M/etc/initramfs-tools" ]; then
-        FAMILY=initramfs-tools
-        ARGS="ro noresume"
-        echo "Boot system: initramfs-tools (Debian, Ubuntu, Mint). Installing the No-Stick hook..."
-        cat > "$M/etc/initramfs-tools/hooks/nostick" << 'NSHOOKA'
-#!/bin/sh
-PREREQ=""
-prereqs() { echo "$PREREQ"; }
-case "$1" in prereqs) prereqs; exit 0 ;; esac
-. /usr/share/initramfs-tools/hook-functions
-# Debian's initrd fills /usr/sbin with busybox applets, and its losetup shadows the real one,
-# so the real losetup goes in under a path of its own.
-copy_exec /usr/sbin/losetup /usr/lib/nostick/losetup
-manual_add_modules loop ext4
-NSHOOKA
-        cat > "$M/etc/initramfs-tools/scripts/local-top/nostick" << 'NSHOOKB'
-#!/bin/sh
-# no-stick: attach a disk image file (with its partitions) before root is looked for
-#   vhdhost=<fs UUID of host partition>  vhdfile=<path on that partition>
-PREREQ=""
-prereqs() { echo "$PREREQ"; }
-case "$1" in prereqs) prereqs; exit 0 ;; esac
-. /scripts/functions
-
-VHD_FILE=""; VHD_HOST=""
-for p in $(cat /proc/cmdline); do
-    case "$p" in
-        vhdfile=*) VHD_FILE="${p#vhdfile=}" ;;
-        vhdhost=*) VHD_HOST="${p#vhdhost=}" ;;
-    esac
-done
-[ -z "$VHD_FILE" ] && exit 0
-[ -n "$VHD_HOST" ] || panic "nostick: vhdhost= is required"
-
-modprobe -q loop max_part=15 || modprobe -q loop
-modprobe -q ext4
-i=0
-while [ ! -e "/dev/disk/by-uuid/$VHD_HOST" ] && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done
-mkdir -p /run/nostick/host
-mount -t ext4 -o rw "/dev/disk/by-uuid/$VHD_HOST" /run/nostick/host || panic "nostick: host mount failed ($VHD_HOST)"
-REAL="/run/nostick/host${VHD_FILE}"
-[ -f "$REAL" ] || panic "nostick: image not found at $REAL"
-LOOP=""
-if [ -x /usr/lib/nostick/losetup ]; then
-    LOOP=$(/usr/lib/nostick/losetup --find --show --partscan "$REAL") || LOOP=""
-fi
-if [ -z "$LOOP" ]; then
-    # busybox losetup: short options only, and it does not print the device
-    LOOP=$(losetup -f) && losetup -P "$LOOP" "$REAL" || LOOP=""
-fi
-[ -n "$LOOP" ] || panic "nostick: could not attach $REAL"
-echo "nostick: $VHD_FILE attached as $LOOP"
-udevadm settle 2>/dev/null || true
-exit 0
-NSHOOKB
-        chmod 755 "$M/etc/initramfs-tools/hooks/nostick" "$M/etc/initramfs-tools/scripts/local-top/nostick"
-        echo "Rebuilding the initramfs (a minute or so)..."
-        chroot "$M" update-initramfs -u -k all < /dev/null 2>&1
-
-        # The distro's own /boot/vmlinuz link follows the LAST kernel installed, which is not always the
-        # newest (an older-series update can arrive after a newer kernel). No-Stick boots through that
-        # link, so keep it on the highest version that has an initrd - now, and after every kernel change.
-        mkdir -p "$M/etc/kernel/postinst.d" "$M/etc/kernel/postrm.d"
-        cat > "$M/etc/kernel/postinst.d/zz-nostick" << 'NSHOOKK'
-#!/bin/sh
-# no-stick: keep /boot/vmlinuz and /boot/initrd.img on the newest kernel that has an initrd
-cd /boot || exit 0
-v=""
-for k in $(ls -1 vmlinuz-* 2>/dev/null | sed 's/^vmlinuz-//' | sort -V); do
-    [ -e "initrd.img-$k" ] && v="$k"
-done
-[ -n "$v" ] || exit 0
-ln -sfn "vmlinuz-$v" vmlinuz
-ln -sfn "initrd.img-$v" initrd.img
-exit 0
-NSHOOKK
-        chmod 755 "$M/etc/kernel/postinst.d/zz-nostick"
-        cp -p "$M/etc/kernel/postinst.d/zz-nostick" "$M/etc/kernel/postrm.d/zz-nostick"
-        chroot "$M" /bin/sh /etc/kernel/postinst.d/zz-nostick < /dev/null
-        echo "Newest kernel in $NAME: $(readlink "$M/boot/vmlinuz" 2>/dev/null || echo unknown)"
-
-    elif [ -f "$M/etc/mkinitcpio.conf" ]; then
-        FAMILY=mkinitcpio
-        ARGS="rw"
-        echo "Boot system: mkinitcpio (Arch). Installing the No-Stick hook..."
-        mkdir -p "$M/etc/initcpio/hooks" "$M/etc/initcpio/install"
-        cat > "$M/etc/initcpio/hooks/nostickloop" << 'NSHOOKC'
-#!/usr/bin/ash
-# no-stick: attach a disk image file (with its partitions) before root is looked for
-#   vhdhost=<fs UUID of host partition>  vhdfile=<path on that partition>
-run_hook() {
-    local f="" h="" i=0 p dev
-    for p in $(cat /proc/cmdline); do
-        case "$p" in
-            vhdfile=*) f="${p#vhdfile=}" ;;
-            vhdhost=*) h="${p#vhdhost=}" ;;
-        esac
-    done
-    [ -z "$f" ] && return 0
-    [ -n "$h" ] || { echo "nostick: vhdhost= is required"; return 1; }
-    modprobe -q loop
-    modprobe -q ext4
-    while [ ! -e "/dev/disk/by-uuid/$h" ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done
-    mkdir -p /run/nostick/host
-    mount -t ext4 -o rw "/dev/disk/by-uuid/$h" /run/nostick/host || { echo "nostick: host mount failed ($h)"; return 1; }
-    [ -f "/run/nostick/host$f" ] || { echo "nostick: image not found at /run/nostick/host$f"; return 1; }
-    dev=$(losetup -f)
-    losetup -P "$dev" "/run/nostick/host$f" || { echo "nostick: losetup failed"; return 1; }
-    echo "nostick: $f attached as $dev"
-    udevadm settle 2>/dev/null || true
-}
-NSHOOKC
-        chmod 755 "$M/etc/initcpio/hooks/nostickloop"
-        if [ ! -f "$M/etc/initcpio/install/nostickloop" ]; then
-            cat > "$M/etc/initcpio/install/nostickloop" << 'NSHOOKD'
-#!/bin/bash
-build() {
-    add_module loop
-    add_module ext4
-    add_binary losetup
-    add_runscript
-}
-help() {
-    echo "no-stick: boot from a disk image file on a host partition (vhdhost= vhdfile=)"
-}
-NSHOOKD
-        fi
-        if ! grep -q '^HOOKS=.*nostickloop' "$M/etc/mkinitcpio.conf"; then
-            sed -i '/^HOOKS=/ s/ filesystems/ nostickloop filesystems/' "$M/etc/mkinitcpio.conf"
-        fi
-        echo "Rebuilding the initramfs (a minute or so)..."
-        chroot "$M" mkinitcpio -P < /dev/null 2>&1 || echo "(mkinitcpio returned a warning status - usually just missing-firmware notes)"
-
-    elif [ -d "$M/usr/lib/dracut/modules.d" ] && { [ -x "$M/usr/bin/dracut" ] || [ -x "$M/usr/sbin/dracut" ]; }; then
-        FAMILY=dracut
-        ARGS="ro"
-        echo "Boot system: dracut (Fedora and relatives). Installing the No-Stick module..."
-        MD="$M/usr/lib/dracut/modules.d/90nostick"
-        mkdir -p "$MD" "$M/etc/dracut.conf.d" "$M/etc/kernel/install.d"
-        cat > "$MD/module-setup.sh" << 'NSHOOKE'
-#!/bin/bash
-# no-stick: boot from a disk image file that lives on a partition of the real machine
-check() { return 255; }                       # only when asked for (see /etc/dracut.conf.d/90-nostick.conf)
-depends() { return 0; }
-installkernel() { hostonly='' instmods loop ext4; }
-install() {
-    inst_multiple losetup mount mkdir cat rm
-    inst_hook initqueue/settled 50 "$moddir/nostick-attach.sh"
-    inst_hook initqueue/finished 50 "$moddir/nostick-finished.sh"
-}
-NSHOOKE
-        cat > "$MD/nostick-attach.sh" << 'NSHOOKF'
-#!/bin/sh
-# no-stick: attach the disk image (with its partitions) so the root inside it can be found.
-#   vhdhost=<fs UUID of host partition>  vhdfile=<path on that partition>
-# Called again and again while the system waits for its root device, so it must be safe to repeat.
-nostick_attach() {
-    local f h dev
-    [ -e /run/nostick/attached ] && return 0
-    [ -e /run/nostick/failed ] && return 0
-    f=$(getarg vhdfile=)
-    [ -n "$f" ] || return 0
-    h=$(getarg vhdhost=)
-    mkdir -p /run/nostick/host
-    if [ -z "$h" ]; then warn "nostick: vhdhost= is required"; : > /run/nostick/failed; return 0; fi
-    [ -e "/dev/disk/by-uuid/$h" ] || return 0          # the real disk is not there yet; we are called again
-    modprobe -q loop max_part=15 2>/dev/null || modprobe -q loop
-    modprobe -q ext4
-    if ! mount -t ext4 -o rw "/dev/disk/by-uuid/$h" /run/nostick/host; then
-        warn "nostick: host mount failed ($h)"; : > /run/nostick/failed; return 0
-    fi
-    if [ ! -f "/run/nostick/host$f" ]; then
-        warn "nostick: image not found at /run/nostick/host$f"; : > /run/nostick/failed; return 0
-    fi
-    dev=$(losetup --find --show --partscan "/run/nostick/host$f")
-    if [ -z "$dev" ]; then warn "nostick: could not attach /run/nostick/host$f"; : > /run/nostick/failed; return 0; fi
-    echo "$dev" > /run/nostick/attached
-    info "nostick: $f attached as $dev"
-    udevadm settle 2>/dev/null
-    return 0
-}
-nostick_attach
-NSHOOKF
-        cat > "$MD/nostick-finished.sh" << 'NSHOOKG'
-#!/bin/sh
-# no-stick: keep the wait loop going until the image has been attached (or has clearly failed)
-[ -z "$(getarg vhdfile=)" ] || [ -e /run/nostick/attached ] || [ -e /run/nostick/failed ]
-NSHOOKG
-        chmod 755 "$MD/module-setup.sh" "$MD/nostick-attach.sh" "$MD/nostick-finished.sh"
-        # include the module in every initramfs built from now on, with drivers for real hardware
-        # (the installer's own initramfs only carries drivers for the virtual machine it ran in)
-        cat > "$M/etc/dracut.conf.d/90-nostick.conf" << 'NSHOOKH'
-# no-stick: this system boots from a disk image file on real hardware
-add_dracutmodules+=" nostick "
-hostonly="no"
-NSHOOKH
-        # keep a fixed name on the newest kernel, so the boot menu entry survives kernel updates
-        cat > "$M/etc/kernel/install.d/99-nostick.install" << 'NSHOOKI'
-#!/bin/sh
-# no-stick: keep /boot/vmlinuz and /boot/initramfs.img on the newest kernel that has an initramfs
-cd /boot || exit 0
-v=""
-for k in $(ls -1 vmlinuz-* 2>/dev/null | sed 's/^vmlinuz-//' | grep -v rescue | sort -V); do
-    [ -e "initramfs-$k.img" ] && v="$k"
-done
-[ -n "$v" ] || exit 0
-ln -sfn "vmlinuz-$v" vmlinuz
-ln -sfn "initramfs-$v.img" initramfs.img
-exit 0
-NSHOOKI
-        chmod 755 "$M/etc/kernel/install.d/99-nostick.install"
-        echo "Rebuilding the initramfs with drivers for real hardware (a few minutes)..."
-        for kv in $(ls -1 "$M/usr/lib/modules" 2>/dev/null); do
-            [ -e "$M/boot/vmlinuz-$kv" ] || continue
-            echo "  kernel $kv"
-            if ! chroot "$M" dracut --force "/boot/initramfs-$kv.img" "$kv" > /tmp/nostick-dracut.log 2>&1 < /dev/null; then
-                tail -15 /tmp/nostick-dracut.log; echo "dracut could not build the initramfs for $kv"; exit 6
-            fi
-        done
-        chroot "$M" /bin/sh /etc/kernel/install.d/99-nostick.install < /dev/null
-        echo "Newest kernel in $NAME: $(readlink "$M/boot/vmlinuz" 2>/dev/null || echo unknown)"
-        # files written from outside carry no SELinux labels; label them, or have the system do it on first boot
-        if [ -f "$M/etc/selinux/config" ]; then
-            FC=$(ls "$M"/etc/selinux/*/contexts/files/file_contexts 2>/dev/null | head -1)
-            if [ -n "$FC" ] && chroot "$M" /usr/sbin/setfiles -F "${FC#"$M"}" /usr/lib/dracut/modules.d/90nostick \\
-                   /etc/dracut.conf.d/90-nostick.conf /etc/kernel/install.d/99-nostick.install /boot > /dev/null 2>&1 < /dev/null; then
-                echo "SELinux labels set on the new files."
-            else
-                : > "$M/.autorelabel"
-                echo "SELinux will relabel the system on its first boot (a few extra minutes, once)."
-            fi
-        fi
-
-    else
-        echo "$PRETTY uses a boot system No-Stick doesn't support yet."
+    if ! find_recipe recipe_detect; then
+        echo "$PRETTY uses a boot system No-Stick has no recipe for yet."
+        echo "(recipes looked for in: ${NOSTICK_RECIPES:-nowhere})"
         exit 4
     fi
+    echo "Recipe: $RECIPE_NAME"
+    FAMILY=$(basename "$RECIPE_FILE" .recipe)
+    ARGS="ro"
+    recipe_install
     if [ -n "$SUBVOL" ]; then ARGS="$ARGS rootflags=subvol=$SUBVOL"; fi
 
     # find the kernel and initrd, preferring the 'latest' symlinks so kernel updates inside the image just work

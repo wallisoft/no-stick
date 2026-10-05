@@ -1,4 +1,6 @@
-# No-Stick recipes
+# What boots: the test record
+
+The recipes themselves are in [recipes/](recipes/); this file records what has actually been booted with them.
 
 What has actually been booted from a disk image on real hardware, what each distro needed, and what is
 still untested. No-Stick picks its method from the image's **initramfs family**, not from the distro name,
@@ -38,7 +40,8 @@ kernel and initrd straight from inside the image file; nothing is copied to the 
     now and for every future kernel.
   - **No fixed "latest kernel" name.** `/etc/kernel/install.d/99-nostick.install` keeps `/boot/vmlinuz` and
     `/boot/initramfs.img` on the newest kernel.
-- SELinux is enforcing; the files No-Stick adds are labelled with `setfiles`, with a first-boot relabel as fallback.
+- SELinux is enforcing. On the test run the first-boot relabel did the labelling: 0.7.0 had a typo that made the
+  direct `setfiles` step fail and fall back to it. Fixed in 0.8.0; the direct route has not been re-tested yet.
 - Boots to the desktop on the test machine with the ISO's own 6.11 kernel. With two monitors attached the first-run
   setup did not appear until the second monitor was unplugged.
 - Fedora as the *host* (running No-Stick itself on Fedora) is not supported yet: it uses grub2 naming and btrfs.
@@ -52,12 +55,16 @@ kernel and initrd straight from inside the image file; nothing is copied to the 
   kernel (the older one). The `zz-nostick` kernel hook (0.4.1) keeps the link on the highest version.
 - 15 GB was too small once updates were applied; the default disk size is now 30 GB.
 
+### Ubuntu 24.04.3 desktop ISO, live — works
+- "Try it live" restarted the test machine straight into the ISO's live session (kexec, no firmware restart),
+  with the ISO read from the hard drive. Nothing installed, the ISO unchanged.
+
 ### Arch Linux — worked with the earlier hook; current hook untested
 - An Arch image booted (writable root) using the first, byte-offset version of the `nostickloop` hook.
 - The current whole-disk version of that hook has not been booted yet.
 
 ## Not yet tested
-- Live-booting an ISO from the menu (entries are generated for Ubuntu/Mint, Debian live and Arch ISOs).
+- Live-booting Mint, Debian, Arch and Fedora ISOs (entries are generated; only the Ubuntu ISO has been booted).
   Expect the Mint 22 ISO to hit the same graphics problem live as it did installed.
 - Images stored on anything other than ext4 (NTFS for Windows dual-boot, btrfs, LUKS).
 - Images whose root filesystem is neither ext4 nor btrfs.

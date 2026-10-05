@@ -1,0 +1,5 @@
+# Recipes run as root on users' machines, so every change to one is reviewed by the owner before it ships.
+# GitHub asks the people named here for a review (and emails them) whenever a pull request touches these paths.
+/recipes/           @wallisoft
+/install.sh         @wallisoft
+/.github/           @wallisoft

@@ -1,0 +1,118 @@
+# No-Stick recipe: how to make one family of Linux systems boot from a disk image file.
+# name:    Debian, Ubuntu and Linux Mint (initramfs-tools)
+# tested:  Debian 13 (boots); Linux Mint 22 (boots, needs a newer kernel on very new PCs)
+# live:    Ubuntu 24.04 ISO boots with "Try it live"; Mint and Debian live ISOs: entries are generated, not yet booted
+#
+# Hook: scripts/local-top/nostick attaches the image before the system looks for its root device.
+# The real losetup is copied to /usr/lib/nostick/losetup, because Debian's initrd puts a busybox one in its way.
+#
+# What a recipe provides, and what it may use, is described in recipes/README.md.
+
+recipe_detect() {
+    [ -d "$M/etc/initramfs-tools" ]
+}
+
+recipe_install() {
+    ARGS="ro noresume"
+    echo "Boot system: initramfs-tools (Debian, Ubuntu, Mint). Installing the No-Stick hook..."
+    cat > "$M/etc/initramfs-tools/hooks/nostick" << 'NSHOOKA'
+#!/bin/sh
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+. /usr/share/initramfs-tools/hook-functions
+# Debian's initrd fills /usr/sbin with busybox applets, and its losetup shadows the real one,
+# so the real losetup goes in under a path of its own.
+copy_exec /usr/sbin/losetup /usr/lib/nostick/losetup
+manual_add_modules loop ext4
+NSHOOKA
+    cat > "$M/etc/initramfs-tools/scripts/local-top/nostick" << 'NSHOOKB'
+#!/bin/sh
+# no-stick: attach a disk image file (with its partitions) before root is looked for
+#   vhdhost=<fs UUID of host partition>  vhdfile=<path on that partition>
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+. /scripts/functions
+
+VHD_FILE=""; VHD_HOST=""
+for p in $(cat /proc/cmdline); do
+    case "$p" in
+        vhdfile=*) VHD_FILE="${p#vhdfile=}" ;;
+        vhdhost=*) VHD_HOST="${p#vhdhost=}" ;;
+    esac
+done
+[ -z "$VHD_FILE" ] && exit 0
+[ -n "$VHD_HOST" ] || panic "nostick: vhdhost= is required"
+
+modprobe -q loop max_part=15 || modprobe -q loop
+modprobe -q ext4
+i=0
+while [ ! -e "/dev/disk/by-uuid/$VHD_HOST" ] && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done
+mkdir -p /run/nostick/host
+mount -t ext4 -o rw "/dev/disk/by-uuid/$VHD_HOST" /run/nostick/host || panic "nostick: host mount failed ($VHD_HOST)"
+REAL="/run/nostick/host${VHD_FILE}"
+[ -f "$REAL" ] || panic "nostick: image not found at $REAL"
+LOOP=""
+if [ -x /usr/lib/nostick/losetup ]; then
+    LOOP=$(/usr/lib/nostick/losetup --find --show --partscan "$REAL") || LOOP=""
+fi
+if [ -z "$LOOP" ]; then
+    # busybox losetup: short options only, and it does not print the device
+    LOOP=$(losetup -f) && losetup -P "$LOOP" "$REAL" || LOOP=""
+fi
+[ -n "$LOOP" ] || panic "nostick: could not attach $REAL"
+echo "nostick: $VHD_FILE attached as $LOOP"
+udevadm settle 2>/dev/null || true
+exit 0
+NSHOOKB
+    chmod 755 "$M/etc/initramfs-tools/hooks/nostick" "$M/etc/initramfs-tools/scripts/local-top/nostick"
+    echo "Rebuilding the initramfs (a minute or so)..."
+    chroot "$M" update-initramfs -u -k all < /dev/null 2>&1
+
+    # The distro's own /boot/vmlinuz link follows the LAST kernel installed, which is not always the
+    # newest (an older-series update can arrive after a newer kernel). No-Stick boots through that
+    # link, so keep it on the highest version that has an initrd - now, and after every kernel change.
+    mkdir -p "$M/etc/kernel/postinst.d" "$M/etc/kernel/postrm.d"
+    cat > "$M/etc/kernel/postinst.d/zz-nostick" << 'NSHOOKK'
+#!/bin/sh
+# no-stick: keep /boot/vmlinuz and /boot/initrd.img on the newest kernel that has an initrd
+cd /boot || exit 0
+v=""
+for k in $(ls -1 vmlinuz-* 2>/dev/null | sed 's/^vmlinuz-//' | sort -V); do
+    [ -e "initrd.img-$k" ] && v="$k"
+done
+[ -n "$v" ] || exit 0
+ln -sfn "vmlinuz-$v" vmlinuz
+ln -sfn "initrd.img-$v" initrd.img
+exit 0
+NSHOOKK
+    chmod 755 "$M/etc/kernel/postinst.d/zz-nostick"
+    cp -p "$M/etc/kernel/postinst.d/zz-nostick" "$M/etc/kernel/postrm.d/zz-nostick"
+    chroot "$M" /bin/sh /etc/kernel/postinst.d/zz-nostick < /dev/null
+    echo "Newest kernel in $NAME: $(readlink "$M/boot/vmlinuz" 2>/dev/null || echo unknown)"
+}
+
+recipe_live() {
+    if [ -f "$M/casper/vmlinuz" ]; then
+        # Ubuntu, Mint and relatives
+        K=/casper/vmlinuz
+        for c in initrd initrd.lz initrd.gz initrd.img; do
+            if [ -z "$I" ] && [ -f "$M/casper/$c" ]; then I="/casper/$c"; fi
+        done
+        ARGS="boot=casper iso-scan/filename=$REL noprompt noeject ---"
+        KIND="Ubuntu/Mint live"
+        return 0
+    fi
+    if ls "$M"/live/vmlinuz* >/dev/null 2>&1; then
+        # Debian live
+        local kf inf
+        kf=$(ls "$M"/live/vmlinuz* | head -1); inf=$(ls "$M"/live/initrd* 2>/dev/null | head -1)
+        K="/live/${kf##*/}"
+        if [ -n "$inf" ]; then I="/live/${inf##*/}"; fi
+        ARGS="boot=live components findiso=$REL"
+        KIND="Debian live"
+        return 0
+    fi
+    return 1
+}

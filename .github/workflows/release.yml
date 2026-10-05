@@ -36,6 +36,12 @@ jobs:
           lua5.4 -e 'io.write(loadfile("chk/no-stick-RootScript.lua")())' > chk/root.sh
           bash -n chk/root.sh
           bash -n install.sh
+          for r in recipes/*.recipe; do
+            bash -n "$r" || { echo "::error::shell syntax error in $r"; exit 1; }
+            grep -q '^# name:' "$r" && grep -q '^# tested:' "$r" && grep -q '^recipe_detect()' "$r" && grep -q '^recipe_install()' "$r" \
+              || { echo "::error::$r must have '# name:' and '# tested:' lines and define recipe_detect and recipe_install"; exit 1; }
+          done
+          echo "$(ls recipes/*.recipe | wc -l) recipes are well-formed"
           echo "$(ls chk/*.lua | wc -l) Lua scripts, the root helper and the installer are all valid"
       - name: Check the forms open in the current Visualised runtime
         run: |
@@ -51,6 +57,8 @@ jobs:
         run: |
           mkdir -p stage/no-stick
           cp no-stick.vml download.vml no-stick.png LICENSE stage/no-stick/
+          mkdir stage/no-stick/recipes
+          cp recipes/*.recipe recipes/README.md stage/no-stick/recipes/
           echo "${{ steps.v.outputs.version }}" > stage/no-stick/VERSION
           tar czf no-stick.tar.gz -C stage no-stick
           tar tzf no-stick.tar.gz
