@@ -12,7 +12,7 @@ Test machine for everything below: A9-Max (UEFI, NVMe, Ubuntu 24.04 host, images
 |---|---|---|
 | initramfs-tools | Debian, Ubuntu, Linux Mint | `scripts/local-top/nostick` attaches the image before root is looked for; the real `losetup` is copied to `/usr/lib/nostick/losetup` |
 | mkinitcpio | Arch | `nostickloop` hook, placed before `filesystems` |
-| dracut | Fedora and relatives | not supported yet |
+| dracut | Fedora and relatives | a `90nostick` dracut module attaches the image while the system waits for its root device |
 
 Every image is attached as a whole disk with its partitions, so any partition layout works. GRUB reads the
 kernel and initrd straight from inside the image file; nothing is copied to the host's /boot.
@@ -27,6 +27,21 @@ kernel and initrd straight from inside the image file; nothing is copied to the 
 - Debian keeps its kernel links in `/`, not `/boot`; the `zz-nostick` kernel hook creates `/boot/vmlinuz`
   and `/boot/initrd.img` so every initramfs-tools distro looks the same to No-Stick.
 - Boot now (kexec) into this image works on the test machine.
+
+### Fedora Workstation 41 — works
+- Installed with the guided installer (QEMU). GPT layout: BIOS-boot, a 1 GB ext4 `/boot`, and one btrfs partition
+  with the system in the `root` subvolume (and `home` beside it).
+- Three things differed from the Debian family, all handled in 0.7.0:
+  - **btrfs root in a subvolume.** No-Stick now finds a system on btrfs and passes `rootflags=subvol=root`.
+  - **The installer's initramfs only had drivers for the virtual machine** (32 MB, against 173 MB for the rescue
+    copy), so it could not have seen a real NVMe drive. `/etc/dracut.conf.d/90-nostick.conf` sets `hostonly="no"`,
+    now and for every future kernel.
+  - **No fixed "latest kernel" name.** `/etc/kernel/install.d/99-nostick.install` keeps `/boot/vmlinuz` and
+    `/boot/initramfs.img` on the newest kernel.
+- SELinux is enforcing; the files No-Stick adds are labelled with `setfiles`, with a first-boot relabel as fallback.
+- Boots to the desktop on the test machine with the ISO's own 6.11 kernel. With two monitors attached the first-run
+  setup did not appear until the second monitor was unplugged.
+- Fedora as the *host* (running No-Stick itself on Fedora) is not supported yet: it uses grub2 naming and btrfs.
 
 ### Linux Mint 22 Cinnamon — works, after a kernel update
 - Installed with the guided installer (QEMU). GPT layout: BIOS-boot, EFI, root on partition 3.
@@ -45,8 +60,9 @@ kernel and initrd straight from inside the image file; nothing is copied to the 
 - Live-booting an ISO from the menu (entries are generated for Ubuntu/Mint, Debian live and Arch ISOs).
   Expect the Mint 22 ISO to hit the same graphics problem live as it did installed.
 - Images stored on anything other than ext4 (NTFS for Windows dual-boot, btrfs, LUKS).
-- Images whose root filesystem is not ext4.
-- Hosts that do not boot with GRUB.
+- Images whose root filesystem is neither ext4 nor btrfs.
+- openSUSE and the Red Hat family, which should follow Fedora's recipe but have not been booted.
+- Hosts that do not boot with GRUB, and Fedora-style hosts (grub2, btrfs). No-Stick says so and stops.
 
 ## Known gaps
 - If an ISO's kernel is too old for the PC, No-Stick does not yet detect or fix that by itself.

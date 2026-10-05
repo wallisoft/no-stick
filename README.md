@@ -49,10 +49,12 @@ Tested on real hardware. See [RECIPES.md](RECIPES.md) for the details and the kn
 | Debian 13 | Installs and boots |
 | Linux Mint 22 | Installs and boots; very new PCs need a newer kernel than the ISO ships |
 | Ubuntu | Same method as Mint and Debian |
+| Fedora 41 | Installs and boots |
 | Arch | Experimental |
-| Fedora and the immutable distros | Not yet |
+| Immutable distros (Silverblue, Bazzite and friends) | Not yet |
 
-Requirements: GRUB as your bootloader, the disk images on an ext4 partition, and about 30 GB free per
+Requirements: a Debian, Ubuntu or Mint style host with GRUB as its bootloader (Fedora works as an installed
+system, but not yet as the host), the disk images on an ext4 partition, and about 30 GB free per
 installed system. Guided installs use QEMU, which No-Stick offers to install. Windows is not supported yet.
 
 ## How it works

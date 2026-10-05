@@ -88,7 +88,12 @@ DESKTOP
     echo
     echo "Done. No-Stick is in your app menu, and 'no-stick' works in a terminal"
     case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "(open a new terminal first, so ~/.local/bin is on your PATH)";; esac
-    if [ ! -d /boot/grub ]; then
+    if grep -q 'vhdfile=' /proc/cmdline 2>/dev/null; then
+        echo "Note: this system is running from a No-Stick disk. No-Stick itself needs to run on your PC's main system."
+    elif [ ! -d /boot/grub ] && [ -d /boot/grub2 ]; then
+        echo "Note: this PC uses the Fedora-style boot menu (grub2). No-Stick can install and boot Fedora in a disk,"
+        echo "      but it can't yet run on a Fedora-style host. It is installed, and will say the same when opened."
+    elif [ ! -d /boot/grub ]; then
         echo "Note: No-Stick adds its entry to the GRUB boot menu, and this PC doesn't appear to use GRUB (/boot/grub is missing)."
     fi
     if [ -n "$missing" ]; then

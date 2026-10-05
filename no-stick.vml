@@ -15,7 +15,7 @@
 # content before showing it, so Height below is only a floor). The info bar and the Delete button are both docked to
 # the bottom with the same height and bottom margin, which is what keeps them level on any font.
 @Window NoStick
-Title=No-Stick 0.6.0
+Title=No-Stick 0.7.0
 Width=860
 Height=560
 Resizable=false
@@ -353,6 +353,30 @@ if ver == "" or too_old(ver) then
         Vml("Shell", [[nohup setsid bash -c "curl -fsSL https://github.com/wallisoft/vml-releases/releases/latest/download/install.sh | bash; command -v notify-send >/dev/null && notify-send \"Visualised is up to date\" \"You can open No-Stick again now.\"" > /tmp/visualised-update.log 2>&1 < /dev/null &]])
         Vml("InfoDialog", "Visualised is updating in the background.\n\nNo-Stick will close now. Give it a minute, then open No-Stick again.", "Updating")
         Vml("AppExit")
+    end
+    return
+end
+
+-- No-Stick manages the boot menu of the real system, so it has to run there
+local blocked = nil
+if run("grep -q 'vhdfile=' /proc/cmdline && echo yes") == "yes" then
+    blocked = "This system is itself running from a No-Stick disk.\n\nNo-Stick manages the boot menu of your PC's main system, " ..
+              "so run it from there. Nothing is wrong with this disk."
+elseif run("test -d /boot/grub && (command -v update-grub || command -v grub-mkconfig) >/dev/null 2>&1 && echo yes") ~= "yes" then
+    if run("test -d /boot/grub2 && echo yes") == "yes" then
+        blocked = "This PC uses the Fedora-style boot menu (grub2).\n\nNo-Stick can install Fedora into a disk and boot it, " ..
+                  "but it can't yet run on a Fedora-style host. That is being worked on."
+    else
+        blocked = "No-Stick adds its entry to the GRUB boot menu, and this PC doesn't appear to use GRUB.\n\n" ..
+                  "It can't manage the boot menu here."
+    end
+end
+if blocked then
+    Vml("InfoDialog", blocked, "No-Stick can't run here")
+    Vml("SetStatusText", "No-Stick can't manage the boot menu on this system")
+    for _, b in ipairs({"btnDownload", "btnAddIso", "btnNewVhd", "btnTryLive", "btnInstallVhd", "btnInstallPart",
+                        "btnBootNow", "btnBootRestart", "btnBackup", "btnRestore", "btnDelete", "btnTimeout", "btnRepair"}) do
+        Vml("SetProperty", b, "IsEnabled", "false")
     end
     return
 end
@@ -1041,7 +1065,8 @@ Interpreter=lua
 --                                          sudo bash FILE menu NOSTICK_DIR
 --                                          sudo bash FILE bootnext [ENTRY_ID]
 --                                          sudo bash FILE bootnow IMG
--- prepare: finds the installed system in the image, installs the boot hook for its initramfs family,
+-- prepare: finds the installed system in the image (ext4, or btrfs with a subvolume), installs the boot hook for its
+--          initramfs family (initramfs-tools, mkinitcpio or dracut),
 --          rebuilds the initramfs, and writes NAME.grub (the menu entry) beside the image.
 -- iso:     looks inside the ISO, works out how its live system boots, and writes ISOFILE.grub.
 -- menu:    rebuilds /boot/no-stick/grub.cfg from every .grub file (vhds and isos) plus menu.conf, and
@@ -1249,26 +1274,33 @@ do_prepare() {
         *)   echo "No partition table in $NAME - has anything been installed into it yet?"; exit 3 ;;
     esac
 
-    # the root partition is the one holding os-release
+    # the root partition is the one holding os-release. On btrfs the system usually sits in a
+    # subvolume: "root" on Fedora, "@" on some others.
     echo "Looking for the installed system in $NAME..."
-    ROOTP=""
+    ROOTP=""; ROOTFS=""; SUBVOL=""
     for p in "$LOOP"p*; do
         [ -b "$p" ] || continue
-        [ "$(blkid -s TYPE -o value "$p" 2>/dev/null || true)" = "ext4" ] || continue
+        t=$(blkid -s TYPE -o value "$p" 2>/dev/null || true)
+        case "$t" in ext4|btrfs) ;; *) continue ;; esac
         if mount -o ro "$p" "$M" 2>/dev/null; then
-            if [ -e "$M/etc/os-release" ]; then ROOTP="$p"; fi
+            if [ -e "$M/etc/os-release" ]; then ROOTP="$p"; ROOTFS="$t"
+            elif [ "$t" = btrfs ]; then
+                for sv in root @ @rootfs; do
+                    if [ -z "$ROOTP" ] && [ -e "$M/$sv/etc/os-release" ]; then ROOTP="$p"; ROOTFS="$t"; SUBVOL="$sv"; fi
+                done
+            fi
             umount "$M"
         fi
         [ -n "$ROOTP" ] && break
     done
     if [ -z "$ROOTP" ]; then
-        echo "No installed system found in $NAME (was the install finished? only ext4 root is supported so far)."; exit 3
+        echo "No installed system found in $NAME (was the install finished? the root must be ext4 or btrfs)."; exit 3
     fi
     ROOTUUID=$(blkid -s UUID -o value "$ROOTP")
-    mount "$ROOTP" "$M"
+    if [ -n "$SUBVOL" ]; then mount -o "subvol=$SUBVOL" "$ROOTP" "$M"; else mount "$ROOTP" "$M"; fi
     PRETTY=$(sed -n 's/^PRETTY_NAME=//p' "$M/etc/os-release" | head -1 | tr -cd 'A-Za-z0-9 ._()/-')
     [ -n "$PRETTY" ] || PRETTY="Linux"
-    echo "Found $PRETTY on partition ${ROOTP##*p}"
+    echo "Found $PRETTY on partition ${ROOTP##*p} ($ROOTFS${SUBVOL:+, subvolume $SUBVOL})"
 
     # a separate /boot partition inside the image (Arch often puts /boot on the EFI partition)
     BOOTP="$ROOTP"
@@ -1416,15 +1448,118 @@ NSHOOKD
         echo "Rebuilding the initramfs (a minute or so)..."
         chroot "$M" mkinitcpio -P < /dev/null 2>&1 || echo "(mkinitcpio returned a warning status - usually just missing-firmware notes)"
 
+    elif [ -d "$M/usr/lib/dracut/modules.d" ] && { [ -x "$M/usr/bin/dracut" ] || [ -x "$M/usr/sbin/dracut" ]; }; then
+        FAMILY=dracut
+        ARGS="ro"
+        echo "Boot system: dracut (Fedora and relatives). Installing the No-Stick module..."
+        MD="$M/usr/lib/dracut/modules.d/90nostick"
+        mkdir -p "$MD" "$M/etc/dracut.conf.d" "$M/etc/kernel/install.d"
+        cat > "$MD/module-setup.sh" << 'NSHOOKE'
+#!/bin/bash
+# no-stick: boot from a disk image file that lives on a partition of the real machine
+check() { return 255; }                       # only when asked for (see /etc/dracut.conf.d/90-nostick.conf)
+depends() { return 0; }
+installkernel() { hostonly='' instmods loop ext4; }
+install() {
+    inst_multiple losetup mount mkdir cat rm
+    inst_hook initqueue/settled 50 "$moddir/nostick-attach.sh"
+    inst_hook initqueue/finished 50 "$moddir/nostick-finished.sh"
+}
+NSHOOKE
+        cat > "$MD/nostick-attach.sh" << 'NSHOOKF'
+#!/bin/sh
+# no-stick: attach the disk image (with its partitions) so the root inside it can be found.
+#   vhdhost=<fs UUID of host partition>  vhdfile=<path on that partition>
+# Called again and again while the system waits for its root device, so it must be safe to repeat.
+nostick_attach() {
+    local f h dev
+    [ -e /run/nostick/attached ] && return 0
+    [ -e /run/nostick/failed ] && return 0
+    f=$(getarg vhdfile=)
+    [ -n "$f" ] || return 0
+    h=$(getarg vhdhost=)
+    mkdir -p /run/nostick/host
+    if [ -z "$h" ]; then warn "nostick: vhdhost= is required"; : > /run/nostick/failed; return 0; fi
+    [ -e "/dev/disk/by-uuid/$h" ] || return 0          # the real disk is not there yet; we are called again
+    modprobe -q loop max_part=15 2>/dev/null || modprobe -q loop
+    modprobe -q ext4
+    if ! mount -t ext4 -o rw "/dev/disk/by-uuid/$h" /run/nostick/host; then
+        warn "nostick: host mount failed ($h)"; : > /run/nostick/failed; return 0
+    fi
+    if [ ! -f "/run/nostick/host$f" ]; then
+        warn "nostick: image not found at /run/nostick/host$f"; : > /run/nostick/failed; return 0
+    fi
+    dev=$(losetup --find --show --partscan "/run/nostick/host$f")
+    if [ -z "$dev" ]; then warn "nostick: could not attach /run/nostick/host$f"; : > /run/nostick/failed; return 0; fi
+    echo "$dev" > /run/nostick/attached
+    info "nostick: $f attached as $dev"
+    udevadm settle 2>/dev/null
+    return 0
+}
+nostick_attach
+NSHOOKF
+        cat > "$MD/nostick-finished.sh" << 'NSHOOKG'
+#!/bin/sh
+# no-stick: keep the wait loop going until the image has been attached (or has clearly failed)
+[ -z "$(getarg vhdfile=)" ] || [ -e /run/nostick/attached ] || [ -e /run/nostick/failed ]
+NSHOOKG
+        chmod 755 "$MD/module-setup.sh" "$MD/nostick-attach.sh" "$MD/nostick-finished.sh"
+        # include the module in every initramfs built from now on, with drivers for real hardware
+        # (the installer's own initramfs only carries drivers for the virtual machine it ran in)
+        cat > "$M/etc/dracut.conf.d/90-nostick.conf" << 'NSHOOKH'
+# no-stick: this system boots from a disk image file on real hardware
+add_dracutmodules+=" nostick "
+hostonly="no"
+NSHOOKH
+        # keep a fixed name on the newest kernel, so the boot menu entry survives kernel updates
+        cat > "$M/etc/kernel/install.d/99-nostick.install" << 'NSHOOKI'
+#!/bin/sh
+# no-stick: keep /boot/vmlinuz and /boot/initramfs.img on the newest kernel that has an initramfs
+cd /boot || exit 0
+v=""
+for k in $(ls -1 vmlinuz-* 2>/dev/null | sed 's/^vmlinuz-//' | grep -v rescue | sort -V); do
+    [ -e "initramfs-$k.img" ] && v="$k"
+done
+[ -n "$v" ] || exit 0
+ln -sfn "vmlinuz-$v" vmlinuz
+ln -sfn "initramfs-$v.img" initramfs.img
+exit 0
+NSHOOKI
+        chmod 755 "$M/etc/kernel/install.d/99-nostick.install"
+        echo "Rebuilding the initramfs with drivers for real hardware (a few minutes)..."
+        for kv in $(ls -1 "$M/usr/lib/modules" 2>/dev/null); do
+            [ -e "$M/boot/vmlinuz-$kv" ] || continue
+            echo "  kernel $kv"
+            if ! chroot "$M" dracut --force "/boot/initramfs-$kv.img" "$kv" > /tmp/nostick-dracut.log 2>&1 < /dev/null; then
+                tail -15 /tmp/nostick-dracut.log; echo "dracut could not build the initramfs for $kv"; exit 6
+            fi
+        done
+        chroot "$M" /bin/sh /etc/kernel/install.d/99-nostick.install < /dev/null
+        echo "Newest kernel in $NAME: $(readlink "$M/boot/vmlinuz" 2>/dev/null || echo unknown)"
+        # files written from outside carry no SELinux labels; label them, or have the system do it on first boot
+        if [ -f "$M/etc/selinux/config" ]; then
+            FC=$(ls "$M"/etc/selinux/*/contexts/files/file_contexts 2>/dev/null | head -1)
+            if [ -n "$FC" ] && chroot "$M" /usr/sbin/setfiles -F "${FC#"$M"}" /usr/lib/dracut/modules.d/90nostick \\
+                   /etc/dracut.conf.d/90-nostick.conf /etc/kernel/install.d/99-nostick.install /boot > /dev/null 2>&1 < /dev/null; then
+                echo "SELinux labels set on the new files."
+            else
+                : > "$M/.autorelabel"
+                echo "SELinux will relabel the system on its first boot (a few extra minutes, once)."
+            fi
+        fi
+
     else
-        echo "$PRETTY uses a boot system No-Stick doesn't support yet (Fedora-style dracut is on the list)."
+        echo "$PRETTY uses a boot system No-Stick doesn't support yet."
         exit 4
     fi
+    if [ -n "$SUBVOL" ]; then ARGS="$ARGS rootflags=subvol=$SUBVOL"; fi
 
     # find the kernel and initrd, preferring the 'latest' symlinks so kernel updates inside the image just work
     K=""; I=""
     if [ -e "$M/boot/vmlinuz" ] && [ -e "$M/boot/initrd.img" ]; then
         K=/boot/vmlinuz; I=/boot/initrd.img
+    elif [ -e "$M/boot/vmlinuz" ] && [ -e "$M/boot/initramfs.img" ]; then
+        K=/boot/vmlinuz; I=/boot/initramfs.img
     elif [ -e "$M/vmlinuz" ] && [ -e "$M/initrd.img" ]; then
         K=/vmlinuz; I=/initrd.img
     else
