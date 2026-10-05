@@ -6,7 +6,7 @@ No-Stick keeps a library of ISOs and virtual disks on your machine and boots any
 real hardware. You get the convenience of a virtual machine (each system is just a file you can copy
 or delete) with none of the overhead: full speed, your real graphics card, your real Wi-Fi.
 
-![The No-Stick window](https://no-stick.uk/screenshot.png)
+![The No-Stick window](site/screenshot.png)
 
 Website: [no-stick.uk](https://no-stick.uk)
 

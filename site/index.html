@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>No-Stick: boot and install Linux with no USB stick</title>
+<meta name="description" content="Keep a library of Linux ISOs and virtual disks on your hard drive, and boot or install any of them directly - no USB stick, no virtualisation overhead. The convenience of a VM, running on real hardware.">
+<link rel="canonical" href="https://no-stick.uk">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root { --sky: #0EA5E9; --blue: #1E3A8A; --bright: #2563EB; --ink: #111827; --muted: #4B5563; --soft: #F3F4F6; --line: #E5E7EB; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif; color: var(--ink); background: #fff; }
+  a { color: var(--bright); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+  header { background: var(--blue); color: #fff; }
+  nav { display: flex; align-items: center; gap: 22px; height: 60px; }
+  nav .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; color: #fff; text-decoration: none; margin-right: auto; }
+  nav .brand img { width: 30px; height: 30px; }
+  nav a { color: #DBEAFE; text-decoration: none; font-size: 15px; }
+  nav a.btn { background: #fff; color: var(--blue); padding: 7px 14px; border-radius: 8px; font-weight: 600; }
+  .hero { background: linear-gradient(180deg, var(--sky), var(--blue) 75%, #fff 75%); color: #fff; padding: 56px 0 0; text-align: center; }
+  .hero h1 { font-size: 44px; line-height: 1.12; margin: 0 0 14px; letter-spacing: -0.5px; }
+  .hero p.lead { font-size: 20px; color: #E0F2FE; max-width: 760px; margin: 0 auto 26px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 40px; }
+  .cta a { padding: 12px 22px; border-radius: 10px; font-weight: 600; text-decoration: none; font-size: 16px; }
+  .cta .primary { background: #fff; color: var(--blue); }
+  .cta .ghost { border: 1.5px solid #7DD3FC; color: #fff; }
+  .shot { width: 100%; max-width: 860px; border-radius: 12px; box-shadow: 0 24px 60px rgba(17,24,39,.35); display: block; margin: 0 auto; border: 1px solid rgba(255,255,255,.1); }
+  section { padding: 60px 0; }
+  h2 { font-size: 30px; margin: 0 0 10px; letter-spacing: -0.3px; }
+  .sub { color: var(--muted); font-size: 18px; margin: 0 0 32px; max-width: 760px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .alt { background: var(--soft); }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; counter-reset: s; }
+  .step { position: relative; padding: 20px 20px 20px 56px; border: 1px solid var(--line); border-radius: 12px; }
+  .step::before { counter-increment: s; content: counter(s); position: absolute; left: 16px; top: 18px; width: 28px; height: 28px; background: var(--bright); color: #fff; border-radius: 50%; display: grid; place-items: center; font-weight: 700; }
+  .step h3 { margin: 0 0 4px; font-size: 16px; }
+  .step p { margin: 0; color: var(--muted); font-size: 14px; }
+  .download { text-align: center; }
+  .code { display: flex; gap: 8px; max-width: 760px; margin: 20px auto 0; }
+  .code code { flex: 1; background: #0F172A; color: #E2E8F0; padding: 12px 14px; border-radius: 8px; font-size: 14px; overflow-x: auto; white-space: nowrap; text-align: left; }
+  .code button { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 0 14px; cursor: pointer; font: inherit; }
+  .note { font-size: 14px; color: var(--muted); }
+  .warn { background: #FEF3C7; border: 1px solid #FDE68A; border-radius: 10px; padding: 14px 16px; font-size: 14px; color: #92400E; max-width: 760px; margin: 24px auto 0; }
+  footer { border-top: 1px solid var(--line); padding: 28px 0; color: var(--muted); font-size: 14px; }
+  @media (max-width: 760px) { .hero h1 { font-size: 32px; } nav a:not(.btn):not(.brand) { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <nav>
+      <a class="brand" href="/"><img src="/nostick-128.png" alt="">No-Stick</a>
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="https://github.com/wallisoft/no-stick">GitHub</a>
+      <a class="btn" href="#download">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <h1>Boot and install Linux.<br>No USB stick.</h1>
+    <p class="lead">Keep a library of ISOs and virtual disks right on your hard drive, and boot or install any of them directly. The convenience of a virtual machine, running on real hardware at full speed.</p>
+    <div class="cta">
+      <a class="primary" href="#download">Download free</a>
+      <a class="ghost" href="https://github.com/wallisoft/no-stick">View source</a>
+    </div>
+    <img class="shot" src="/screenshot.png" alt="The No-Stick window: a library of ISOs and virtual disks, with actions to download, install and boot">
+  </div>
+</div>
+
+<section id="how">
+  <div class="wrap">
+    <h2>The best of both worlds</h2>
+    <p class="sub">Installing an OS usually means burning a USB stick and rebooting, or running it slowly in a VM forever. No-Stick does neither.</p>
+    <div class="steps">
+      <div class="step"><h3>Add a distro</h3><p>Download one from the community catalogue, or point at an ISO you already have.</p></div>
+      <div class="step"><h3>Install to a virtual disk</h3><p>The distro's own installer runs in a quick, safe VM and installs into a disk-image file. Minutes, not reboots.</p></div>
+      <div class="step"><h3>Boot it for real</h3><p>Tick it into the No-Stick boot menu, then boot it at the next restart, or jump straight into it now. It runs on bare metal - full speed, all your hardware.</p></div>
+    </div>
+    <div class="warn"><strong>Safe by design:</strong> the installer runs in a sandboxed VM that can only see the virtual disk, never your real drives. Your existing system is never touched, and your boot menu gains exactly one new entry: No-Stick.</div>
+  </div>
+</section>
+
+<section id="features" class="alt">
+  <div class="wrap">
+    <h2>What it does</h2>
+    <div class="grid">
+      <div class="card"><h3>Try a distro live</h3><p>Boot an ISO without installing anything, straight from your hard drive. New in this release, for Ubuntu, Mint, Debian and Arch ISOs.</p></div>
+      <div class="card"><h3>Install to a VHD</h3><p>A full, real install inside a file. Make as many as you like - each is just a file you can copy, back up or delete.</p></div>
+      <div class="card"><h3>Dual-boot friendly</h3><p>Windows and your current Linux stay exactly where they are. No partitions are created, resized or removed.</p></div>
+      <div class="card"><h3>Your boot menu, your rules</h3><p>Tick what appears in the menu, choose a default, and set a timer to boot it automatically. Or use Boot now to restart into a disk in seconds.</p></div>
+      <div class="card"><h3>Tested on real hardware</h3><p>Debian 13 and Linux Mint 22 install and boot today, and Ubuntu uses the same method. Arch is experimental; Fedora and the immutable distros are next.</p></div>
+      <div class="card"><h3>Open source</h3><p>MIT licensed and free, forever. Built with <a href="https://visualised.io">Visualised</a> - the whole app is two readable files, so you can <a href="https://github.com/wallisoft/no-stick">read exactly what it does</a> before you run it.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="download" class="download">
+  <div class="wrap">
+    <h2>Download No-Stick</h2>
+    <p class="sub" style="margin:0 auto">Free and open source. Linux with the GRUB boot menu: Ubuntu, Mint, Debian and similar.</p>
+    <div class="code"><code id="cmd">curl -fsSL https://github.com/wallisoft/no-stick/releases/latest/download/install.sh | bash</code><button data-copy="cmd">Copy</button></div>
+    <p class="note" style="margin-top:14px">Installs into your home folder, with the Visualised runtime it needs. Run it from your app menu, or <code>no-stick</code> in a terminal. Windows is not supported yet.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">No-Stick is made by Wallisoft &middot; open source (MIT) &middot; <a href="https://github.com/wallisoft/no-stick">github.com/wallisoft/no-stick</a></div>
+</footer>
+<script>
+  document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => {
+    navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent);
+    b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1500);
+  }));
+</script>
+</body>
+</html>
